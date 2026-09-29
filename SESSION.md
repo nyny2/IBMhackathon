@@ -123,19 +123,22 @@ appears in both train and validation fold. This mirrors the Kaggle holdout exact
 | 09 | `experiments/09_per_patient_progression.py` | `tabular_pipeline` + demographic features | all + `on_off_gap`, `ledd_missing` | **7.340** | 0.118 | **`submission_progression.csv`** ✅ **Best Kaggle score** |
 | 09b | `experiments/09_cumulative_history.py` | `tabular_pipeline` + cumulative history | all + cummax/cumean | **4.138** | 0.056 | `submission_cumulative.csv` ⚠️ Kaggle: **22.497** |
 | 10 | `experiments/10_pharmacodynamic.py` | `HGBR` + pharmacodynamic proxies | all + `levo_conc_off`, `conc_ratio_on_off` | **~5–6** | — | `submission_pharmacodynamic.csv` |
-| 10b | `experiments/10_robust_features.py` | `TableVectorizer` + `HGBR` + robust features | raw + missingness indicators | **7.325** | 0.125 | `submission_robust.csv` |
-| 11 | `experiments/11_stacking.py` | `Ridge` meta-learner stacking S1+S2+S3 | OOF preds + availability flags | **~2.0** (target) | — | `submission_stacking.csv` |
+| 10b | `experiments/10_exam_aware.py` | `tabular_pipeline` + exam-type flags + corrected cumulative | has_off, off_corrected, levo proxies | **4.096** | 0.061 | `submission_exam_aware.csv` |
+| 10c | `experiments/10_robust_features.py` | `TableVectorizer` + `HGBR` + robust features | raw + missingness indicators | **7.325** | 0.125 | `submission_robust.csv` |
+| 11 | `experiments/11_off_corrected.py` | `tabular_pipeline` + off-corrected formula features | off+8 correction, corrected cumulative, exam flags | **4.059** | 0.059 | **`submission_corrected.csv`** ✅ Kaggle: **3.968** |
+| 11b | `experiments/11_stacking.py` | `Ridge` meta-learner stacking S1+S2+S3 | OOF preds + availability flags | — | — | `submission_stacking.csv` |
 
-### ✅ Best confirmed Kaggle submission: `submission_progression.csv` (exp09 Strategy 2)
-Strategy 2 (per-patient demographic progression) scored best on Kaggle leaderboard.
-No cold-start issue — all features (on, off, ledd, disease_duration, on_off_gap) are
-observable for unseen test patients.
+### ✅ Best confirmed Kaggle result: `submission_corrected.csv` (exp11, Kaggle RMSE **3.968**)
+Off-corrected formula model. CV RMSE 4.059 — **76% reduction** vs dummy baseline.
+
+### Previous best: `submission_progression.csv` (exp09 Strategy 2)
+Best honest result before formula correction was discovered.
 
 ### ⚠️ Distribution shift lessons learned
 - exp09b (cumulative history): CV 4.138 → **Kaggle 22.497** — catastrophic failure.
   Cumulative features are fully populated on training data but NaN-sparse for unseen test patients.
 - exp08 (lag): `prev_target` all-NaN at test time — do not submit standalone.
-- Strategy 2 wins because it uses only features available for any patient at any visit.
+- exp11 corrected cumulative is safe because `off_corrected = off + 8` is informative even at visit 1.
 
 ---
 
@@ -209,18 +212,19 @@ observable for unseen test patients.
 - Also exports `model_10_pharmacodynamic.pkl` for use by exp 11.
 - Writes `submission_pharmacodynamic.csv`.
 
-### Exp 11 — Strategy 4: Stacking ensemble
-- **Architecture:** two-layer stacking with OOF base predictions as meta-features.
-  - Layer 1: three `HGBR` base learners (S1 lag, S2 demographic, S3 pharmacodynamic).
-  - Layer 2: `Ridge(alpha=1.0)` meta-learner on `[pred_s1, pred_s2, pred_s3, flags]`.
-  - Availability flags (`has_prev_target`, `has_off`, `has_time_since_off`, `has_ledd`,
-    `has_on`) tell the meta-learner how much to trust each base model per row.
-- **Why it wins:** the meta-learner learns context-dependent weighting:
-  - `prev_target` available → upweight S1 (lag).
-  - `off` + `time_since_intake_off` available → upweight S3 (pharmacodynamic).
-  - Test patient (cold-start, `prev_target` NaN) → S1 routes through non-lag branch;
-    S2 fills the demographic gap.
-- Target CV RMSE: **~2.0**. Writes `submission_stacking.csv`.
+### Exp 11 — Off-corrected formula model ✅ CURRENT BEST
+- **File:** `experiments/11_off_corrected.py`
+- `off_corrected = off + 8.0` (target ≈ off + 8 at long washout — systematic upward bias correction).
+- `on_corrected = on + levo_conc_on` (pharmacodynamic debiased on-state score).
+- `target_est` unified feature; cumulative history of corrected scores (safe because base values are informative even at visit 1).
+- Exam-type flags: `has_off`, `has_on`, `has_on_only`; missingness indicators; `disease_duration`, `visit_number`.
+- **CV RMSE: 4.059 ± 0.059** | **Kaggle RMSE: 3.968** ✅
+- Submission: `submission_corrected.csv`
+
+### Exp 11b — OOF Stacking meta-learner
+- **File:** `experiments/11_stacking.py`
+- Three HGBR base learners (S1 lag, S2 demographic, S3 pharmacodynamic) → Ridge meta-learner on OOF predictions + availability flags.
+- Not yet run to convergence with corrected base features.
 
 ---
 
@@ -249,10 +253,12 @@ observable for unseen test patients.
 │   ├── 07_final.py                   ← baseline (CV 7.37)
 │   ├── 08_lag_features.py            ← Strategy 1: lag (CV ~2.51, ⚠️ cold-start)
 │   ├── 09_cumulative_history.py      ← cumulative history (CV 4.14, ⚠️ Kaggle 22.50)
-│   ├── 09_per_patient_progression.py ← Strategy 2: demographic ✅ BEST KAGGLE
+│   ├── 09_per_patient_progression.py ← Strategy 2: demographic (CV 7.34, previous best Kaggle)
+│   ├── 10_exam_aware.py              ← exam-type flags + corrected cumulative (CV 4.10)
 │   ├── 10_pharmacodynamic.py         ← Strategy 3: drug-timing unbias
 │   ├── 10_robust_features.py         ← robust cross-sectional baseline (CV 7.33)
-│   ├── 11_stacking.py                ← Strategy 4: meta-learner stacking
+│   ├── 11_off_corrected.py           ← off+8 correction formula (CV 4.06, Kaggle 3.968) ✅ BEST
+│   ├── 11_stacking.py                ← OOF meta-learner stacking (not yet run)
 │   ├── model_09_cold_start.pkl       ← exported by 09, used by 11
 │   └── model_10_pharmacodynamic.pkl  ← exported by 10, used by 11
 ├── journal/
