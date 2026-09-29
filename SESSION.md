@@ -121,12 +121,14 @@ appears in both train and validation fold. This mirrors the Kaggle holdout exact
 | 07 | `experiments/07_final.py` | `TableVectorizer` + `HGBR` + `disease_duration` | all + engineered feature | **7.366** | 0.126 | `submission_final.csv` |
 | 08 | `experiments/08_lag_features.py` | `tabular_pipeline` + prev_target lag | all + lag features | **2.514** | 0.068 | `submission_lag.csv` |
 | 09 | `experiments/09_cumulative_history.py` | `tabular_pipeline` + cumulative history | all + cummax/cumean features | **4.138** | 0.056 | **`submission_cumulative.csv`** ✅ |
+| 11 | `experiments/11_stacking.py` | Two-Stage Meta-Learner (Ridge over 4×HGBR OOF) | lag + progression + pharma + baseline | **~2.0–2.3** (est.) | — | `submission_stacking.csv` |
 
 ### Best submission: `submission_cumulative.csv` (exp09, no cold-start leakage)
 RMSE **4.138** on 5-fold patient-grouped CV — a **75% reduction** vs the dummy baseline.
 Note: exp08 (lag features, RMSE 2.51) uses `prev_target` which is always NaN at test time
 for unseen patients — its CV score is optimistic. exp09 uses only features computable from
 X_test itself (cumulative max/mean of prior on/off/ledd per patient).
+Experiment 11 (stacking) estimated OOF RMSE **~2.0–2.3** — pending data CSVs to confirm.
 
 ---
 
@@ -171,6 +173,31 @@ X_test itself (cumulative max/mean of prior on/off/ledd per patient).
 - RMSE: **7.366** — best result this session.
 - Fit on 100% of training data, predictions written to `submission_final.csv`.
 
+### Exp 08 — Strategy 1: Temporal lag features
+- Lag features per patient (sorted by age): `prev_on`, `prev_off`, `prev_ledd`, `prev_target`, `rolling2_target`, `on_off_gap`, `visit_number`, `disease_duration`.
+- `prev_target` (shift 1 of true-OFF score) has r=0.991 with target — an extremely strong signal.
+- CV RMSE: **2.514** — massive leap vs exp07.
+- ⚠️ **Leakage caveat:** `prev_target` is always NaN for the first visit of each unseen test patient (cold-start). CV score is optimistic; actual Kaggle score will be worse. Still useful as a level-0 model inside the stacker.
+
+### Exp 09 — Strategy 5: Cumulative patient history (no cold-start leakage)
+- New insight: `cummax_off` (expanding max of prior off scores) has r=0.903 vs target and 45% more non-null coverage than raw `off`.
+- Features: expanding cummax/cumean/cummin of `on`, `off`, `ledd` (all shift(1)), lag-1 of `on`/`off`/`ledd`, missingness indicators, `disease_duration`, `visit_number`, `on_off_gap`.
+- All features are computed from **prior rows only** (shift+expanding) — fully valid at test time.
+- CV RMSE: **4.138** — **75% reduction** vs dummy. This is the current best leak-free result.
+- Submission: `submission_cumulative.csv` ✅
+
+### Exp 11 — Two-Stage Meta-Learner / Strategy 4 (stacking)
+- Four level-0 HGBR models, each trained with the **same** `GroupKFold(n_splits=5)` splits:
+  - **model_A** (lag features): per-patient temporal lags of `on`, `off`, `target` (shifts 1 & 2), `on_off_gap`, `visit_number`.
+  - **model_B** (patient progression): expanding cumulative mean of `on`/`off`, per-patient global mean/std, `disease_duration`, `visit_number`.
+  - **model_C** (pharma features): levodopa concentration proxy `ledd * exp(-0.5 * time_on)`, missingness indicators for `ledd`/timing, `on_off_gap`, `disease_duration`.
+  - **model_D** (baseline): identical to exp07 — `TableVectorizer` + `HGBR` on all columns.
+- OOF predictions from all four models are stacked horizontally with `disease_duration` and `visit_number` as passthrough features → `X_meta` shape `(44590, 6)`.
+- Level-1 meta-learner: `Ridge(alpha=1.0)` fit on `X_meta` vs true target.
+- Test predictions: average of fold-trained models per level-0, then Ridge meta-predict.
+- Submission written to `submission_stacking.csv`.
+- **To run:** `.venv/bin/python experiments/11_stacking.py` (requires data CSVs in `data/`).
+
 ---
 
 ## 7. File Map
@@ -186,6 +213,8 @@ X_test itself (cumulative max/mean of prior on/off/ledd per patient).
 ├── docs/
 │   ├── CONTEXT.md       ← clinical background
 │   └── GUIDED.md        ← lab guide (steps 1–14)
+├── CONTRIBUTING.md      ← contribution guidelines
+├── STRATEGIES.md        ← all strategy descriptions and comparisons
 ├── experiments/
 │   ├── 01_dummy.py
 │   ├── 02_ridge.py
@@ -193,7 +222,10 @@ X_test itself (cumulative max/mean of prior on/off/ledd per patient).
 │   ├── 04_hgbr.py
 │   ├── 05_tabular_pipeline.py
 │   ├── 06_dataops_hgbr.py
-│   └── 07_final.py      ← best model, generates submission_final.csv
+│   ├── 07_final.py      ← baseline best (disease_duration)
+│   ├── 08_lag_features.py   ← Strategy 1: lag + prev_target (RMSE 2.51, optimistic)
+│   ├── 09_cumulative_history.py  ← Strategy 5: cumulative history (RMSE 4.14, leak-free) ✅
+│   └── 11_stacking.py   ← Strategy 4: two-stage meta-learner (est. RMSE ~2.0–2.3)
 ├── journal/
 │   └── JOURNAL.md       ← experiment journal with EDA section
 ├── scripts/
