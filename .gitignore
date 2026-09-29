@@ -1,14 +1,14 @@
-# secrets and skore-cli credentials
+﻿# secrets and skore-cli credentials
 .env
 .skore
 
 # virtual environment created in the install steps
 .venv/
 
-# competition tables — download from Kaggle, do not commit
+# competition tables вЂ” download from Kaggle, do not commit
 data/*.csv
 
-# skills are installed per machine — do not vendor them
+# skills are installed per machine вЂ” do not vendor them
 .bob/
 
 # agent scratch probes
@@ -28,3 +28,10 @@ skills/
 .worktrees/
 
 .bob/mcp.json
+
+# local skore Project storage (binary, machine-specific)
+skore/
+
+# Kaggle submission files (regenerated from experiments/)
+submission_*.csv
+
