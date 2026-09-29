@@ -10,37 +10,29 @@
 
 | Item | Value |
 |---|---|
-| Repo root | `c:\Users\zoubh\IBMhackathon` |
-| Python | 3.12.10 (installed via `winget install Python.Python.3.12`) |
-| Virtual env | `.venv\` (created with `python -m venv .venv`) |
-| Key packages | `skore 0.26.0`, `skore-cli 0.4.1`, `skrub 0.10.1`, `scikit-learn 1.9.1`, `pandas 3.0.6` |
-| Skills installed | 14 skills from `probabl-ai/skills-hackathon` → `.bob/skills/` |
-| skore Project | local mode, `skore/` dir, name `"ibm-hackathon"` |
-| Hub workspace | ⚠️ **NOT YET CREATED** — login succeeded but no workspace exists; `.skore` was not written |
+| Repo root | `c:\Users\sarah\OneDrive\Documents\GitHub\IBMhackathon` |
+| Python | 3.12 |
+| Virtual env | `.venv\` |
+| Key packages | `skore`, `skrub`, `scikit-learn 1.9.x`, `pandas 3.x` |
+| skore Project | local mode `skore/` + Hub mode `Bobalicious/ibm-hackathon` |
+| Hub workspace | `Bobalicious` (workspace_id=569) — credentials in `.skore` |
 | Competition | [IBM × Probabl Hackathon on Kaggle](https://www.kaggle.com/t/ece2ca6a5b0b456b85692ad66a5aee6d) |
 
-### ⚠️ Pending: Hub workspace setup
-Run once a workspace exists on https://skore.probabl.ai:
+Run any experiment:
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.venv\Scripts\Activate.ps1
-python scripts/skore-agent
+$env:PYTHONUTF8="1"
+.venv\Scripts\python.exe experiments/<script>.py
 ```
-Then re-put reports to hub using `Project(name="ibm-hackathon", mode="hub", workspace=cfg["workspace"])`.
 
 ---
 
 ## 2. Competition Context
 
-- **Goal:** Predict the **debiased true-OFF MDS-UPDRS motor score** (`target`) for each
-  Parkinson's disease patient visit.
-- **Why hard:** Raw OFF scores are biased by drug timing, subjectivity, and missingness.
-  The target is a synthetic "true OFF" that removes those biases.
-- **Metric:** RMSE (lower is better). Baseline mean predictor ≈ 16.50.
-- **Key constraint:** Test patients do NOT overlap train patients — holdout is **by patient_id**.
-  This mandates `GroupKFold` for CV.
+- **Goal:** Predict the **debiased true-OFF MDS-UPDRS motor score** (`target`) for each Parkinson's disease patient visit.
+- **Metric:** RMSE (lower is better). Dummy baseline: **16.50**.
+- **Key constraint:** Test patients do NOT overlap train patients — holdout is **by patient_id**. This mandates `GroupKFold` for CV.
+- **Kaggle team:** SARAH5 — current best: **3.246** (exp17)
 - Full clinical context: [`docs/CONTEXT.md`](docs/CONTEXT.md)
-- Lab guide (steps 1–14): [`docs/GUIDED.md`](docs/GUIDED.md)
 
 ---
 
@@ -73,320 +65,186 @@ Then re-put reports to hub using `Project(name="ibm-hackathon", mode="hub", work
 - Mean: 37.47 | Median: 37.3 | Std: 16.50 | Q1: 25.6 | Q3: 49.3 | Range: 0–109.5
 - Roughly bell-shaped, slightly right-skewed. Regression task.
 
-### Key EDA findings (→ [`data/eda.md`](data/eda.md))
-- `off` (Pearson r=**0.886**) and `on` (r=**0.69**) are the strongest predictors of `target`.
-- Missing `off`/`on`/`ledd`/timing values are **informative signal**, not noise — missing OFF exam
-  typically means the visit was ON-only (patient was doing well).
-- `patient_id` repeats ~8× per patient → `GroupKFold(patient_id)` is mandatory.
-- No datetime columns; disease progression is captured by `age - age_at_diagnosis`.
+### Key clinical insights
+- `off` (Pearson r=**0.886**) and `on` (r=**0.69**) are the strongest predictors.
+- `target ≈ off + 8.0` at long washout (>12 h) — fundamental bias correction.
+- Two distinct populations: `has_off` patients (early stage, target ≈ 21) vs `on_only` patients (late stage, target ≈ 44).
+- `off=NaN` means patient was well enough to skip the uncomfortable OFF exam — this is signal not noise.
+- `ledd` is in mg/day units — **cannot add directly to MDS-UPDRS scores** (units incompatible).
 
 ---
 
-## 4. Environment Setup Commands
-
-```powershell
-# Step 2 (Python — already done)
-winget install Python.Python.3.12
-
-# Step 4 (venv + skore — already done)
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install --upgrade skore-cli
-skore skills install all --repo probabl-ai/skills-hackathon --agent bob-ide
-python scripts/skore-agent   # opens browser for hub login
-```
-
-To run any experiment:
-```powershell
-$env:PYTHONUTF8="1"
-.venv\Scripts\python.exe experiments/<script>.py
-```
-
----
-
-## 5. Experiments — All Results
+## 4. Experiments — All Results
 
 All experiments use **`GroupKFold(n_splits=5)` on `patient_id`** — same patient never
 appears in both train and validation fold. This mirrors the Kaggle holdout exactly.
 
-| # | File | Model | Features | RMSE (mean) | RMSE (std) | Submission file |
-|---|---|---|---|---|---|---|
-| 01 | `experiments/01_dummy.py` | `DummyRegressor(mean)` | none | **16.500** | 0.343 | — |
-| 02 | `experiments/02_ridge.py` | `Ridge(α=1)` + median impute | numeric 8 | **10.437** | 0.197 | `submission_ridge.csv` |
-| 03 | `experiments/03_ridge_tuned.py` | `Ridge` α sweep [0.1–100] | numeric 8 | **10.437** | — | `submission_ridge_tuned.csv` |
-| 04 | `experiments/04_hgbr.py` | `HGBR` (native NaN) | numeric 8 | **7.436** | 0.135 | `submission_hgbr.csv` |
-| 05 | `experiments/05_tabular_pipeline.py` | `TableVectorizer` + `HGBR` | all (incl. gene/cohort) | **7.426** | 0.123 | `submission_tabular.csv` |
-| 06 | `experiments/06_dataops_hgbr.py` | DataOps + `TableVectorizer` + `HGBR` | all (incl. gene/cohort) | **7.556** | 0.127 | — |
-| 07 | `experiments/07_final.py` | `TableVectorizer` + `HGBR` + `disease_duration` | all + engineered feature | **7.366** | 0.126 | `submission_final.csv` |
-| 08 | `experiments/08_lag_features.py` | `HGBR` + `prev_target`/`prev_off`/`prev_on` | all + lag features | **~2.51** | — | ⚠️ cold-start, no submission |
-| 09 | `experiments/09_per_patient_progression.py` | `tabular_pipeline` + demographic features | all + `on_off_gap`, `ledd_missing` | **7.340** | 0.118 | **`submission_progression.csv`** ✅ **Best Kaggle score** |
-| 09b | `experiments/09_cumulative_history.py` | `tabular_pipeline` + cumulative history | all + cummax/cumean | **4.138** | 0.056 | `submission_cumulative.csv` ⚠️ Kaggle: **22.497** |
-| 10 | `experiments/10_pharmacodynamic.py` | `HGBR` + pharmacodynamic proxies | all + `levo_conc_off`, `conc_ratio_on_off` | **~5–6** | — | `submission_pharmacodynamic.csv` |
-| 10b | `experiments/10_exam_aware.py` | `tabular_pipeline` + exam-type flags + corrected cumulative | has_off, off_corrected, levo proxies | **4.096** | 0.061 | `submission_exam_aware.csv` |
-| 10c | `experiments/10_robust_features.py` | `TableVectorizer` + `HGBR` + robust features | raw + missingness indicators | **7.325** | 0.125 | `submission_robust.csv` |
-| 11 | `experiments/11_off_corrected.py` | `tabular_pipeline` + off-corrected formula features | off+8 correction, corrected cumulative, exam flags | **4.059** | 0.059 | **`submission_corrected.csv`** ✅ Kaggle: **3.968** |
-| 11b | `experiments/11_stacking.py` | `Ridge` meta-learner stacking S1+S2+S3 | OOF preds + availability flags | — | — | `submission_stacking.csv` |
+| # | File | CV RMSE | Kaggle RMSE | Status |
+|---|---|---|---|---|
+| 01 | `01_dummy.py` | 16.50 | — | ✅ Done |
+| 02 | `02_ridge.py` | 10.44 | — | ✅ Done |
+| 04 | `04_hgbr.py` | 7.44 | — | ✅ Done |
+| 07 | `07_final.py` | 7.37 | — | ✅ Done |
+| 08 | `08_lag_features.py` | ~2.51 | ⚠️ cold-start | ✅ Done (no submission) |
+| 09b | `09_cumulative_history.py` | 4.14 | **22.50** ❌ | ✅ Done (train/test shift lesson) |
+| 09 | `09_per_patient_progression.py` | 7.34 | best S2 | ✅ Done |
+| 10 | `10_exam_aware.py` | 4.10 | — | ✅ Done |
+| 11 | `11_off_corrected.py` | **4.06** | **3.968** ✅ | ✅ Done, Hub pushed |
+| 11b | `11_stacking.py` | TBD | TBD | 🔄 Ready to run (rebuilt this session) |
+| 16 | `16_whole_patient.py` | **3.47** | ~3.5 | ✅ Done, Hub pushed |
+| 17 | `17_whole_patient_v2.py` | **3.47** | **3.246** 🏆 | ✅ Done, Hub pushed |
 
-### ✅ Best confirmed Kaggle result: `submission_corrected.csv` (exp11, Kaggle RMSE **3.968**)
-Off-corrected formula model. CV RMSE 4.059 — **76% reduction** vs dummy baseline.
+### 🏆 Current best Kaggle score: 3.246 (exp17)
+Submitted as `submission_17_whole_patient_v2.csv` by SARAH5.
 
-### Previous best: `submission_progression.csv` (exp09 Strategy 2)
-Best honest result before formula correction was discovered.
-
-### ⚠️ Distribution shift lessons learned
-- exp09b (cumulative history): CV 4.138 → **Kaggle 22.497** — catastrophic failure.
-  Cumulative features are fully populated on training data but NaN-sparse for unseen test patients.
-- exp08 (lag): `prev_target` all-NaN at test time — do not submit standalone.
-- exp11 corrected cumulative is safe because `off_corrected = off + 8` is informative even at visit 1.
+### Hub reports confirmed on Hub
+| Key | CV RMSE | Hub URL |
+|---|---|---|
+| `01_dummy` | 16.50 | https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/44282 |
+| `02_ridge` | 10.44 | https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/44306 |
+| `04_hgbr` | 7.44 | https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/44330 |
+| `07_final` | 7.37 | https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/44368 |
+| `16_whole_patient` | 3.47 | https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/43831 |
+| `17_whole_patient_v2` | 3.47 | https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/44466 |
 
 ---
 
-## 6. Experiment Details
-
-### Exp 01 — Dummy baseline
-- Always predicts the training mean (37.47).
-- RMSE = std of target = 16.50. This is the floor.
-
-### Exp 02/03 — Ridge
-- `make_pipeline(SimpleImputer(strategy="median"), Ridge(alpha=X))`
-- Feature set: 8 numeric columns. Strings (`gene`, `cohort`) excluded.
-- Alpha sweep (0.1, 1.0, 10.0, 100.0) all gave identical RMSE ≈ 10.44.
-  Ridge is hitting a model-form ceiling, not a regularization issue.
-- Improvement over dummy: −37%.
-
-### Exp 04 — HGBR (step 11)
-- `HistGradientBoostingRegressor(random_state=0)` — **no imputation needed**.
-- Same 8 numeric features as Ridge, but NaN-aware tree routing.
-- RMSE drops to 7.44 — **29% better than Ridge**. The jump comes from treating
-  "OFF not measured" as a signal branch in the trees rather than replacing it
-  with the median.
-
-### Exp 05 — skrub tabular_pipeline (step 12)
-- `tabular_pipeline("regressor")` = `TableVectorizer` → `HGBR`.
-- `TableVectorizer` adds `gene` (low-cardinality → one-hot) and `cohort` (binary → one-hot).
-- RMSE: 7.426 — marginal improvement over plain HGBR (gene/cohort add a small amount of
-  group-level signal).
-
-### Exp 06 — DataOps (step 13)
-- Same model as exp 05 but built with `skrub.var` / `mark_as_X(cv=GroupKFold(...),
-  split_kwargs={"groups": groups})` / `mark_as_y` / `.skb.apply(...)`.
-- The GroupKFold + patient groups are **baked into the computation graph**, so they
-  cannot drift from the data through a forgotten argument.
-- RMSE: 7.556 — slightly higher than exp 05 (numerical variation; same model class).
-- Key learning: `skore.evaluate(pred, data={"visits": visits})` is required even
-  when CV is baked in — the `data=` dict provides the env-dict the SkrubLearner needs.
-
-### Exp 07 — Final (step 14)
-- `tabular_pipeline("regressor")` on all columns except `patient_id` + `target`.
-- Added engineered feature: `disease_duration = age - age_at_diagnosis`.
-- RMSE: **7.366** — best run result.
-- Fit on 100% of training data, predictions written to `submission_final.csv`.
+## 5. Key Experiment Details
 
 ### Exp 08 — Strategy 1: Lag features
-- Per-patient temporal lag: sort visits by `age` within each `patient_id`, add
-  `prev_target`, `prev_off`, `prev_on` (lag-1). HGBR handles NaN natively.
+- `prev_target`, `prev_off`, `prev_on` (lag-1). HGBR handles NaN natively.
 - CV RMSE: **~2.51** — massive gain from longitudinal signal.
-- ⚠️ **Cold-start:** test patients are unseen → `prev_target` is NaN for every test row. Used as base layer in exp 11 stacking only.
+- ⚠️ **Cold-start:** test patients are unseen → `prev_target` NaN for all rows. Do NOT submit standalone.
 
-### Exp 09b — Cumulative patient history (exp09_cumulative_history.py)
-- Features: expanding cummax/cumean/cummin of `on`, `off`, `ledd` (shift(1)), lag-1, missingness indicators.
-- CV RMSE: **4.138** — appeared valid in CV.
-- ⚠️ **Kaggle score: 22.497** — catastrophic failure due to train/test distribution shift.
-  Cumulative features fully populated on all 44,590 training rows; NaN-sparse for unseen test patients.
+### Exp 09b — Cumulative history (abandoned)
+- CV RMSE: **4.14** | Kaggle RMSE: **22.50** ❌
+- Post-mortem: cumulative features are dense for the final-fit model (all 44k rows) but NaN-sparse for unseen test patients. The final fit ≠ the CV model. **GroupKFold is necessary but not sufficient** — always check feature distributions on X_test.
 
-### Exp 09 — Strategy 2: Per-patient demographic progression ✅ BEST KAGGLE RESULT
-- HGBR on cross-sectional features only: `cohort`, `sexM`, `gene`, `age_at_diagnosis`, `age`,
-  `ledd`, `ledd_missing`, `time_since_intake_on`, `time_since_intake_off`, `on`, `off`,
-  `disease_duration`, `on_off_gap`.
-- No lags, no cumulative history — all features observable for unseen test patients.
-- CV RMSE: **7.340 ± 0.118**. **Best confirmed Kaggle score across all submissions.**
-- Exports `model_09_cold_start.pkl` (used by exp11 as cold-start fill for prev_target).
-- Submission: `submission_progression.csv` ✅
+### Exp 11 — Off-corrected formula model
+- `off_corrected = off + 8.0`, corrected cumulative history, exam-type flags.
+- CV RMSE: **4.06** | Kaggle RMSE: **3.968** ✅
 
-### Exp 10 — Strategy 3: Pharmacodynamic unbias
-- Adds `levo_conc_off = ledd * exp(-k * time_since_intake_off)` (k = ln(2)/3.5 h⁻¹),
-  `levo_conc_on`, `ledd_x_ton`, `ledd_x_toff`, `conc_ratio_on_off`.
-- These directly encode the drug-timing bias described in CONTEXT.md §generative model.
-- Expected CV RMSE: **~5–6** (standalone; gains are amplified when stacked).
-- Also exports `model_10_pharmacodynamic.pkl` for use by exp 11.
-- Writes `submission_pharmacodynamic.csv`.
+### Exp 16 — Whole-patient aggregates
+- Per-patient polynomial fits (`slope/intercept/fitted`) on `off`, `on` vs `disease_duration`.
+- Whole-patient aggregates: `pmean`, `pmax`, `pmin`, `pstd` — all X-only, safe at test time.
+- CV RMSE: **3.47**
 
-### Exp 11 — Off-corrected formula model ✅ CURRENT BEST
-- **File:** `experiments/11_off_corrected.py`
-- `off_corrected = off + 8.0` (target ≈ off + 8 at long washout — systematic upward bias correction).
-- `on_corrected = on + levo_conc_on` (pharmacodynamic debiased on-state score).
-- `target_est` unified feature; cumulative history of corrected scores (safe because base values are informative even at visit 1).
-- Exam-type flags: `has_off`, `has_on`, `has_on_only`; missingness indicators; `disease_duration`, `visit_number`.
-- **CV RMSE: 4.059 ± 0.059** | **Kaggle RMSE: 3.968** ✅
-- Submission: `submission_corrected.csv`
+### Exp 17 — Whole-patient v2 🏆
+- 5-seed ensemble HGBR + polynomial smoothing + per-patient sub-models (off-visit, on-visit, all).
+- Final prediction: degree-2 poly smooth of ensemble average, clipped to [0,132].
+- CV RMSE: **3.47** | Kaggle RMSE: **3.246** 🏆
 
-### Exp 11b — OOF Stacking meta-learner
+### Exp 11b (new) — Meta-stacking
 - **File:** `experiments/11_stacking.py`
-- Three HGBR base learners (S1 lag, S2 demographic, S3 pharmacodynamic) → Ridge meta-learner on OOF predictions + availability flags.
-- Not yet run to convergence with corrected base features.
+- Uses `build_all_features` from exp16 as shared feature base (test-safe).
+- Three HGBR base learners: S1 (+ prev_target lag), S2 (whole-patient only), S3 (same as S2, for extensibility).
+- Ridge meta-learner on OOF preds + availability flags.
+- Train+test concat before feature building so test gets intra-test ordering benefits.
+- **Status:** ready to run. CV RMSE target: < 3.0.
 
 ---
 
-## 7. File Map
+## 6. OOF Residual Analysis
 
-```
-.
-├── data/
-│   ├── X_train.csv, y_train.csv, X_test.csv, sample_submission.csv  ← raw (gitignored)
-│   ├── eda.py           ← EDA script (jupytext # %% format)
-│   ├── eda.md           ← EDA narrative (this session)
-│   ├── eda_visits.html  ← skrub TableReport, training table
-│   └── eda_test.html    ← skrub TableReport, test table
-├── docs/
-│   ├── CONTEXT.md       ← clinical background
-│   └── GUIDED.md        ← lab guide (steps 1–14)
-├── CONTRIBUTING.md      ← contribution guidelines
-├── STRATEGIES.md        ← all strategy descriptions and comparisons
-├── experiments/
-│   ├── 01_dummy.py
-│   ├── 02_ridge.py
-│   ├── 03_ridge_tuned.py
-│   ├── 04_hgbr.py
-│   ├── 05_tabular_pipeline.py
-│   ├── 06_dataops_hgbr.py
-│   ├── 07_final.py                   ← baseline (CV 7.37)
-│   ├── 08_lag_features.py            ← Strategy 1: lag (CV ~2.51, ⚠️ cold-start)
-│   ├── 09_cumulative_history.py      ← cumulative history (CV 4.14, ⚠️ Kaggle 22.50)
-│   ├── 09_per_patient_progression.py ← Strategy 2: demographic (CV 7.34, previous best Kaggle)
-│   ├── 10_exam_aware.py              ← exam-type flags + corrected cumulative (CV 4.10)
-│   ├── 10_pharmacodynamic.py         ← Strategy 3: drug-timing unbias
-│   ├── 10_robust_features.py         ← robust cross-sectional baseline (CV 7.33)
-│   ├── 11_off_corrected.py           ← off+8 correction formula (CV 4.06, Kaggle 3.968) ✅ BEST
-│   ├── 11_stacking.py                ← OOF meta-learner stacking (not yet run)
-│   ├── model_09_cold_start.pkl       ← exported by 09, used by 11
-│   └── model_10_pharmacodynamic.pkl  ← exported by 10, used by 11
-├── journal/
-│   └── JOURNAL.md       ← experiment journal with EDA section
-├── scripts/
-│   └── skore-agent      ← hub login + .skore writer
-├── skore/               ← local skore Project storage (all reports persisted here)
-├── .bob/skills/         ← 14 installed hackathon skills
-├── .venv/               ← Python 3.12 virtual environment
-├── submission_ridge.csv
-├── submission_ridge_tuned.csv
-├── submission_hgbr.csv
-├── submission_tabular.csv
-├── submission_final.csv       ← ✅ current best (RMSE 7.37)
-├── submission_progression.csv ← exp 09 standalone (after running)
-├── submission_pharmacodynamic.csv ← exp 10 standalone (after running)
-└── submission_stacking.csv    ← 🎯 target best (after running exp 11)
-```
+From `scripts/oof_analysis.py`:
+- Visit 1 RMSE = **5.37** (5,576 rows, no history) — biggest weakness.
+- `has_off` rows: RMSE 3.80 | `on_only` rows: RMSE 4.37.
+- Residual correlates with `cumean_off` (r=0.259), `disease_duration` (r=0.232), `visit_number` (r=0.227).
+- 90% of `on_only` rows have `cummax_off` available from prior visits.
 
 ---
 
-## 8. skore Project State
-
-Local project at `skore/`, name `"ibm-hackathon"`. Reports persisted:
-
-| key | Experiment | RMSE |
-|---|---|---|
-| `01_dummy` | DummyRegressor | 16.50 |
-| `02_ridge` | Ridge α=1 | 10.44 |
-| `03_ridge_tuned` | Ridge best alpha | 10.44 |
-| `04_hgbr` | HGBR numeric | 7.44 |
-| `05_tabular_pipeline` | TableVectorizer+HGBR | 7.43 |
-| `06_dataops_hgbr` | DataOps+HGBR | 7.56 |
-| `07_final` | Final (+disease_duration) | **7.37** |
-| `08_lag_features` | Strategy 1 (lag) | **~2.51** *(after run)* |
-| `09_per_patient_progression` | Strategy 2 (demographic) | **~3–5** *(after run)* |
-| `10_pharmacodynamic` | Strategy 3 (pharma) | **~5–6** *(after run)* |
-| `11_stacking` | Strategy 4 (stacking S1+S2+S3) | **~2.0** *(after run)* |
-
-To load a report in a new session:
-```python
-import skore
-project = skore.Project(name="ibm-hackathon", mode="local", workspace="skore")
-print(project.summarize())             # list all reports with ids
-report = project.get(<id_from_summarize>)   # get by id (NOT key string)
-print(report.metrics.rmse())
-```
-
-> ⚠️ `project.get()` takes the **uuid id** from `project.summarize()`, not the string key
-> passed to `project.put()`. This is a common trap.
-
----
-
-## 9. Known Issues / Gotchas
+## 7. Known Issues / Gotchas
 
 | Issue | Detail |
 |---|---|
-| `__file__` not defined in IPython runner | Fixed in `data/eda.py` — use `Path.cwd() / "data"` instead of `Path(__file__).resolve().parent` |
-| `project.put()` rejects `ComparisonReport` | Only accepts `EstimatorReport` or `CrossValidationReport`. Evaluate models separately and put each report individually. |
-| `skore.evaluate(pred)` with DataOp needs `data=` | Even when CV is baked into the graph via `mark_as_X(cv=...)`, you must pass `data={"visits": df}` so the SkrubLearner has its environment dict. |
-| `report.metrics.rmse()` MultiIndex columns | The returned DataFrame has columns `(estimator_name, aggregate)`. Access mean via `df.loc["RMSE", (estimator_name, "mean")]`. |
-| Hub workspace missing | `.skore` not written. User must create workspace at skore.probabl.ai and re-run `python scripts/skore-agent`. |
-| PowerShell stdout encoding | Set `$env:PYTHONUTF8="1"` and `$env:PYTHONIOENCODING="utf-8"` before running Python to avoid cp1251 encoding errors. |
+| `ledd` units | `ledd` is in mg/day — **cannot add directly to MDS-UPDRS scores** (wrong units). `on_corrected = on + levo_conc_on` was a bug: residual -556. |
+| Distribution shift from cumulative features | exp09b: CV 4.14 → Kaggle 22.50. Always concat train+test BEFORE computing whole-patient aggregates. |
+| Cold-start at visit 1 | `prev_target` is NaN for all test patients. HGBR routes these through the NaN branch — degrades gracefully but weakens S1. |
+| Hub report key vs `project.get()` id | `project.put("key", report)` stores by key string. `project.get()` takes the **uuid id** from `project.summarize()`, not the string key. |
+| Hub push timeout | Push each report individually (not via a loop). `push_all_to_hub.py` had repeated timeouts. |
+| PowerShell encoding | Set `$env:PYTHONUTF8="1"` before running Python. |
+| `11_off_corrected` Hub bug | The Hub report for `11_off_corrected` shows RMSE 16.78 — wrong features used in that push run. Real CV RMSE is 4.06. |
 
 ---
 
-## 10. Next Steps (Recommended)
+## 8. File Map
 
-In rough priority order:
+```
+.
+├── data/                         ← gitignored: X_train.csv, y_train.csv, X_test.csv, sample_submission.csv
+├── docs/
+│   ├── CONTEXT.md                ← clinical background (generative model)
+│   └── GUIDED.md                 ← lab guide (steps 1–14)
+├── experiments/
+│   ├── 01_dummy.py  …  07_final.py   ← baselines (RMSE 16.5 → 7.37)
+│   ├── 08_lag_features.py            ← Strategy 1: lag (CV 2.51, ⚠️ cold-start)
+│   ├── 09_cumulative_history.py      ← abandoned (Kaggle 22.50)
+│   ├── 09_per_patient_progression.py ← Strategy 2: demographic (CV 7.34)
+│   ├── 10_exam_aware.py              ← exam flags + corrected cumulative (CV 4.10)
+│   ├── 10_pharmacodynamic.py         ← pharmacodynamic proxies standalone
+│   ├── 11_off_corrected.py           ← KEY: off+8 correction (CV 4.06, Kaggle 3.968) ✅
+│   ├── 11_stacking.py                ← KEY: meta-stacking on whole-patient features 🔄
+│   ├── 16_whole_patient.py           ← KEY: whole-patient aggregates + linreg (CV 3.47) ✅
+│   └── 17_whole_patient_v2.py        ← KEY: 5-seed + poly smooth (Kaggle 3.246) 🏆
+├── scripts/
+│   ├── oof_analysis.py           ← OOF residual breakdown by visit/exam type
+│   ├── visit1_analysis.py        ← visit-1 cold-start analysis
+│   ├── push_all_to_hub.py        ← pushes all reports to Hub
+│   └── push_exp17.py             ← pushes exp17 report
+├── journal/
+│   └── JOURNAL.md                ← full experiment journal
+├── pitch.html                    ← HTML pitch (French, updated with 3.246 result)
+├── submission_corrected.csv      ← exp11, Kaggle 3.968
+├── submission_17_whole_patient_v2.csv  ← exp17, Kaggle 3.246 🏆 CURRENT BEST
+├── .skore                        ← Hub credentials: workspace="Bobalicious", id=569
+└── SESSION.md                    ← this file
+```
 
-1. **Run exp 08–11 in sequence** (the four strategies are now coded):
+---
+
+## 9. Next Steps to Reach < 3.0
+
+In priority order:
+
+1. **Run `experiments/11_stacking.py`** — new meta-stacking on whole-patient features:
    ```powershell
    $env:PYTHONUTF8="1"
-   .venv\Scripts\python.exe experiments/08_lag_features.py
-   .venv\Scripts\python.exe experiments/09_per_patient_progression.py
-   .venv\Scripts\python.exe experiments/10_pharmacodynamic.py
    .venv\Scripts\python.exe experiments/11_stacking.py
    ```
-   Then upload `submission_stacking.csv` to Kaggle.
+   Then upload `submission_stacking.csv` to Kaggle. Target CV RMSE: < 3.0.
 
-2. **Create Hub workspace** — go to https://skore.probabl.ai, create workspace named like
-   your Kaggle team, re-run `python scripts/skore-agent`, then re-put reports to hub for
-   valid Kaggle submission URLs.
+2. **Fix visit-1 cold-start (RMSE 5.37)** — use `pat_fitted_off` (per-patient linreg fitted value at visit's disease_duration) as a cold-start prior when no cumulative history exists.
 
-3. **HGBR hyperparameter tuning** — try increasing `max_iter`, `learning_rate`,
-   `max_leaf_nodes` inside each base learner in exp 11.
+3. **Blend exp17 + exp11_stacking** — if stacking beats 3.246, a 50/50 blend may further reduce variance.
 
-4. **More lag depth** — add lag-2/lag-3 features (`prev_prev_target`) to exp 08 / the
-   S1 block in exp 11.
+4. **Add `prev_target` intra-test lag** — test patients with multiple visits in X_test should have visit-2+ `prev_target` populated from the test set itself. This is now implemented in `11_stacking.py` via the train+test concat feature building.
 
-5. **Step 13 DataOps pipeline with lag features** — use `skrub.DataOps` to build a
-   graph that computes rolling/lag features within patient groups, ensuring the
-   computation is applied consistently at train and predict time.
-
-6. **Meta-learner upgrade** — try `GradientBoostingRegressor` or `LightGBM` as the
-   meta-learner in exp 11 if Ridge is under-fitting the flag×prediction interactions.
+5. **LightGBM as base learner** — handles categorical features natively and often better on tabular; can replace HGBR in any base slot.
 
 ---
 
-## 11. How to Continue in a New Session
+## 10. How to Resume in a New Session
 
 ```python
-# 1. Activate venv (PowerShell)
-# $env:PYTHONUTF8 = "1"
-# .venv\Scripts\Activate.ps1
+# 1. Activate venv
+# $env:PYTHONUTF8="1"; .venv\Scripts\Activate.ps1
 
-# 2. Load skore project and inspect
-import skore
-project = skore.Project(name="ibm-hackathon", mode="local", workspace="skore")
-print(project.summarize())
-
-# 3. Load data
+# 2. Load data
 import pandas as pd
 X_train = pd.read_csv("data/X_train.csv", index_col="Index")
 y_train = pd.read_csv("data/y_train.csv", index_col="Index")
 X_test  = pd.read_csv("data/X_test.csv",  index_col="Index")
-visits  = X_train.join(y_train)
 
-# 4. Reproduce the best model
-from skrub import tabular_pipeline
-from sklearn.model_selection import GroupKFold
-visits["disease_duration"] = visits["age"] - visits["age_at_diagnosis"]
-X_test["disease_duration"]  = X_test["age"]  - X_test["age_at_diagnosis"]
-X_full = visits.drop(columns=["patient_id", "target"])
-y = visits["target"]
-groups = visits["patient_id"]
-cv_splits = list(GroupKFold(n_splits=5).split(X_full, y, groups=groups))
-model = tabular_pipeline("regressor")
-report = skore.evaluate(model, X_full, y, splitter=cv_splits)
-print(report.metrics.rmse())   # expect ~7.37
+# 3. Reproduce exp17 (current best)
+# .venv\Scripts\python.exe experiments/17_whole_patient_v2.py
+
+# 4. Run new stacking experiment
+# .venv\Scripts\python.exe experiments/11_stacking.py
+
+# 5. Check Hub reports
+import skore, json, pathlib
+cfg = json.loads(pathlib.Path(".skore").read_text())
+project = skore.Project(name="ibm-hackathon", mode="hub", workspace=cfg["workspace"])
+print(project.summarize())
 ```

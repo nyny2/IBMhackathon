@@ -1,0 +1,388 @@
+
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IBM × Probabl Hackathon — Pitch</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.6; color: #1f2328;
+    background: #ffffff; padding: 32px 16px 48px;
+  }
+  .page { max-width: 760px; margin: 0 auto; }
+
+  .header { border-bottom: 2px solid #e5e7eb; padding-bottom: 20px; margin-bottom: 28px; }
+  .header h1 { font-size: 21px; font-weight: 700; margin-bottom: 6px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px;
+           font-size: 11px; font-weight: 600; text-transform: uppercase;
+           letter-spacing: 0.4px; margin-right: 5px; }
+  .b-blue   { background:#dbeafe; color:#1d4ed8; }
+  .b-green  { background:#d1fae5; color:#065f46; }
+  .b-amber  { background:#fef3c7; color:#92400e; }
+  .b-purple { background:#ede9fe; color:#5b21b6; }
+
+  h2 { font-size: 14px; font-weight: 700; margin: 26px 0 10px;
+       padding-bottom: 4px; border-bottom: 1px solid #e5e7eb; text-transform: uppercase;
+       letter-spacing: 0.5px; color: #57606a; }
+  h3 { font-size: 13px; font-weight: 700; margin: 14px 0 5px; }
+  p  { margin-bottom: 8px; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
+  .kpi { background:#f7f8fa; border:1px solid #e5e7eb; border-radius:6px; padding:12px 14px; }
+  .kpi .label { font-size:11px; font-weight:600; color:#57606a; text-transform:uppercase; letter-spacing:0.4px; }
+  .kpi .value { font-size:20px; font-weight:700; color:#1f2328; margin-top:2px; }
+  .kpi .sub   { font-size:11px; color:#57606a; margin-top:1px; }
+
+  table { width:100%; border-collapse:collapse; font-size:12px; margin:10px 0; }
+  th { background:#f7f8fa; text-align:left; padding:7px 10px; font-weight:600;
+       color:#57606a; border-bottom:2px solid #e5e7eb; }
+  td { padding:6px 10px; border-bottom:1px solid #f0f0f0; }
+  tr.best td { background:#f0fdf4; font-weight:600; }
+  tr.warn td { background:#fff7ed; }
+  tr.muted td { color:#57606a; }
+
+  .bar-chart { margin: 12px 0; }
+  .bar-row { display:flex; align-items:center; margin-bottom:6px; font-size:12px; gap:8px; }
+  .bar-label { width:200px; flex-shrink:0; color:#57606a; white-space:nowrap; overflow:hidden;
+               text-overflow:ellipsis; }
+  .bar-track { flex:1; background:#f0f0f0; border-radius:3px; height:16px; overflow:hidden; }
+  .bar-fill  { height:100%; border-radius:3px; }
+  .c-gray   { background:#94a3b8; }
+  .c-blue   { background:#3b82d4; }
+  .c-green  { background:#10b981; }
+  .c-red    { background:#ef4444; }
+  .c-purple { background:#7c5cd8; }
+  .bar-val { width:48px; flex-shrink:0; text-align:right; font-weight:700; font-size:11px; }
+
+  .steps { margin:12px 0; }
+  .step { display:flex; gap:12px; margin-bottom:12px; }
+  .step-num { width:24px; height:24px; border-radius:50%; flex-shrink:0;
+              display:flex; align-items:center; justify-content:center;
+              font-size:11px; font-weight:700; color:#fff; margin-top:1px; }
+  .s-gray   { background:#94a3b8; }
+  .s-blue   { background:#3b82d4; }
+  .s-amber  { background:#f59e0b; }
+  .s-red    { background:#ef4444; }
+  .s-green  { background:#10b981; }
+  .s-purple { background:#7c5cd8; }
+  .step-body { font-size:13px; }
+  .step-body strong { color:#1f2328; }
+  .step-body .rmse { font-size:11px; font-weight:700; padding:1px 7px; border-radius:10px;
+                     background:#f0fdf4; color:#065f46; margin-left:6px; }
+  .step-body .rmse.bad { background:#fee2e2; color:#991b1b; }
+  .step-body .rmse.amber { background:#fef3c7; color:#92400e; }
+
+  .formula { background:#f0f9ff; border:1px solid #bae6fd; border-radius:6px;
+             padding:11px 14px; font-family:monospace; font-size:12px;
+             color:#0c4a6e; line-height:1.9; margin:10px 0; }
+
+  .lesson { display:flex; gap:10px; margin-bottom:10px; }
+  .lesson-num { width:22px; height:22px; border-radius:50%; background:#3b82d4;
+                color:#fff; font-size:11px; font-weight:700; flex-shrink:0;
+                display:flex; align-items:center; justify-content:center; margin-top:1px; }
+  .lesson-body { font-size:13px; }
+
+  .hub-box { background:#f7f8fa; border:1px solid #e5e7eb; border-radius:6px;
+             padding:12px 16px; font-size:12px; margin:10px 0; }
+  .hub-box a { color:#3b82d4; text-decoration:none; }
+  .hub-box a:hover { text-decoration:underline; }
+  .hub-row { display:flex; justify-content:space-between; align-items:center;
+             padding:4px 0; border-bottom:1px solid #f0f0f0; }
+  .hub-row:last-child { border-bottom:none; }
+  .hub-key  { font-family:monospace; font-size:11px; color:#1f2328; }
+  .hub-rmse { font-weight:700; font-size:12px; color:#065f46; }
+  .hub-rmse.bad { color:#991b1b; }
+
+  .footer { margin-top:40px; padding-top:14px; border-top:1px solid #e5e7eb;
+            text-align:center; font-size:12px; color:#57606a; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  
+  <div class="header">
+    <h1>IBM × Probabl Hackathon — Prédiction du score moteur Parkinson</h1>
+    <p style="margin-top:6px">
+      <span class="badge b-blue">Régression</span>
+      <span class="badge b-blue">Kaggle</span>
+      <span class="badge b-green">Meilleur Kaggle : 3.246</span>
+      <span class="badge b-amber">Baseline : 16.500</span>
+      <span class="badge b-purple">−80 % vs dummy</span>
+    </p>
+  </div>
+
+  
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="label">Patients train</div>
+      <div class="value">5 576</div>
+      <div class="sub">44 590 visites × 11 colonnes</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Patients test</div>
+      <div class="value">11 013</div>
+      <div class="sub">entièrement inconnus (cold-start)</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Meilleur RMSE</div>
+      <div class="value" style="color:#065f46">3.246</div>
+      <div class="sub">exp17 — Kaggle public</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Réduction</div>
+      <div class="value" style="color:#065f46">−80 %</div>
+      <div class="sub">vs dummy (16.50)</div>
+    </div>
+  </div>
+
+  
+  <h2>Le problème médical</h2>
+  <p>
+    Les patients atteints de la maladie de Parkinson oscillent entre un état
+    <strong>ON</strong> (médicament efficace) et <strong>OFF</strong> (médicament épuisé).
+    Le score OFF clinique est <em>biaisé</em> : subjectivité humaine, timing du médicament,
+    examens souvent évités car inconfortables. La compétition demande de prédire le
+    <strong>vrai OFF débiaisé</strong> — une cible synthétique qui retire ces biais.
+  </p>
+
+  <table>
+    <tr><th>Colonne</th><th>Corrélation cible</th><th>Manquant</th><th>Rôle</th></tr>
+    <tr><td><code>off</code></td><td><strong>r = 0.886</strong> ⭐</td><td>42 %</td><td>Score OFF mesuré (biaisé par le médicament)</td></tr>
+    <tr><td><code>on</code></td><td>r = 0.69</td><td>30 %</td><td>Score ON mesuré (patient sous médoc)</td></tr>
+    <tr><td><code>ledd</code></td><td>modéré</td><td>37 %</td><td>Dose levodopa équivalente (mg/j)</td></tr>
+    <tr><td><code>time_since_intake_off</code></td><td>faible seul</td><td>79 %</td><td>Heures depuis la dernière prise à l'examen OFF</td></tr>
+    <tr><td><code>age, age_at_diagnosis</code></td><td>modéré</td><td>5 %</td><td>Durée maladie = âge − âge diagnostic</td></tr>
+  </table>
+  <p style="font-size:12px;color:#57606a">⚠️ Les NaN sont du <em>signal</em>, pas du bruit — <code>off=NaN</code> signifie souvent que le patient allait trop bien pour subir l'examen.</p>
+
+  
+  <h2>Contrainte clé — cold-start total</h2>
+  <p>
+    Les patients de test sont <strong>entièrement inconnus</strong>.
+    Toute feature calculée depuis l'historique d'entraînement (<code>prev_target</code>,
+    cumulatif dense) est NaN au test. C'est le piège central de la compétition —
+    il a valu un RMSE Kaggle de <strong>22.50</strong> sur l'exp09b malgré un CV à 4.13.
+  </p>
+
+  
+  <h2>Progression des expériences</h2>
+
+  <div class="bar-chart">
+    <div class="bar-row">
+      <div class="bar-label">01 Dummy (moyenne)</div>
+      <div class="bar-track"><div class="bar-fill c-gray" style="width:100%"></div></div>
+      <div class="bar-val" style="color:#94a3b8">16.50</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">02 Ridge + imputation médiane</div>
+      <div class="bar-track"><div class="bar-fill c-blue" style="width:63%"></div></div>
+      <div class="bar-val">10.44</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">04 HGBR (NaN natif)</div>
+      <div class="bar-track"><div class="bar-fill c-blue" style="width:45%"></div></div>
+      <div class="bar-val">7.44</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">07 tabular_pipeline + disease_dur</div>
+      <div class="bar-track"><div class="bar-fill c-blue" style="width:45%"></div></div>
+      <div class="bar-val">7.37</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">09b Cumulatif brut → Kaggle ⚠️</div>
+      <div class="bar-track"><div class="bar-fill c-red" style="width:100%"></div></div>
+      <div class="bar-val" style="color:#ef4444">22.50</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">11 off_corrected + cumulatif corrigé</div>
+      <div class="bar-track"><div class="bar-fill c-blue" style="width:24%"></div></div>
+      <div class="bar-val">3.968</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">16 Agrégats patient + régression linéaire</div>
+      <div class="bar-track"><div class="bar-fill c-purple" style="width:21%"></div></div>
+      <div class="bar-val" style="color:#7c5cd8">3.474</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">17 whole_patient_v2 — MEILLEUR 🏆</div>
+      <div class="bar-track"><div class="bar-fill c-green" style="width:20%"></div></div>
+      <div class="bar-val" style="color:#065f46"><strong>3.246</strong></div>
+    </div>
+  </div>
+
+  
+  <h2>Chemin des décisions</h2>
+  <div class="steps">
+
+    <div class="step">
+      <div class="step-num s-gray">1</div>
+      <div class="step-body">
+        <strong>Dummy → Ridge (exp 01–03)</strong>
+        <span class="rmse amber">RMSE 16.50 → 10.44</span><br />
+        La médiane impute les NaN et détruit le signal "patient absent = allait bien".
+        Ridge plafonne à 10.4 — bottleneck de forme, pas de régularisation.
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num s-blue">2</div>
+      <div class="step-body">
+        <strong>HGBR + skrub TableVectorizer (exp 04–07)</strong>
+        <span class="rmse amber">RMSE 7.44 → 7.37</span><br />
+        HGBR route les NaN dans des branches séparées → le NaN <em>est</em> le signal.
+        <code>gene</code>/<code>cohort</code> encodés. <code>disease_duration</code> ajouté.
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num s-red">3</div>
+      <div class="step-body">
+        <strong>Cumulatif brut — le piège (exp 09b)</strong>
+        <span class="rmse bad">CV 4.14 → Kaggle 22.50 ❌</span><br />
+        Fit final sur 44k lignes (cumulatif dense) puis prédiction sur patients test
+        (cumulatif sparse). Distribution shift sévère. CV était précis mais le modèle
+        final ≠ modèle CV.
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num s-amber">4</div>
+      <div class="step-body">
+        <strong>off_corrected = off + 8 (exp 11)</strong>
+        <span class="rmse">CV 4.06 / Kaggle 3.968 ✅</span><br />
+        Découverte clé : <code>target ≈ off + 8</code> à long washout. Cumulatif calculé
+        sur scores corrigés — même à la visite 1, <code>off_corrected</code> est informatif.
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num s-purple">5</div>
+      <div class="step-body">
+        <strong>Agrégats whole-patient + régression linéaire (exp 16)</strong>
+        <span class="rmse">CV 3.47 / Kaggle ~3.5</span><br />
+        Features calculées sur <em>toutes</em> les visites du patient (passées + futures)
+        depuis X uniquement : pente/intercept de <code>off_corrected ~ disease_duration</code>,
+        moyenne LOO, proportion de visites avec OFF mesuré.
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num s-green">6</div>
+      <div class="step-body">
+        <strong>whole_patient_v2 — 5 seeds + lissage polynomial auto (exp 17)</strong>
+        <span class="rmse">Kaggle <strong>3.246</strong> 🏆</span><br />
+        Ensemble de 5 seeds HGBR. Lissage polynomial par patient (degré 1/2/3 selon
+        le nombre de visites). Blend 50/50 avec exp16. Meilleur résultat.
+      </div>
+    </div>
+
+  </div>
+
+  
+  <h2>Formule du meilleur modèle (exp 17)</h2>
+  <div class="formula">
+<span style="color:#7c5cd8">// Correction pharmacodynamique</span><br />
+off_corrected  = off + 8.0<br />
+levo_conc_off  = ledd × exp(−0.05 × time_since_intake_off)<br />
+<br />
+<span style="color:#7c5cd8">// Agrégats whole-patient (toutes visites, X seulement)</span><br />
+pat_slope_off     = pente(off_corrected ~ disease_duration) par patient<br />
+pat_fitted_off    = slope × disease_duration + intercept<br />
+pat_offc_loo_mean = moyenne LOO de off_corrected par patient<br />
+pat_frac_off      = fraction de visites avec off mesuré<br />
+<br />
+<span style="color:#7c5cd8">// Modèle</span><br />
+TableVectorizer + HGBR(1000 arbres, lr=0.02, 5 seeds)<br />
+→ lissage polynomial auto-degré par patient<br />
+→ blend 50/50 avec exp16<br />
+→ <strong>RMSE Kaggle 3.246</strong>
+  </div>
+
+  
+  <h2>Enseignements clés</h2>
+
+  <div class="lesson">
+    <div class="lesson-num">1</div>
+    <div class="lesson-body">
+      <strong>target ≈ off + 8</strong> — Le score cible est systématiquement ~8 points
+      au-dessus du <code>off</code> mesuré à long washout. C'est le biais central que
+      la compétition demande de corriger.
+    </div>
+  </div>
+  <div class="lesson">
+    <div class="lesson-num">2</div>
+    <div class="lesson-body">
+      <strong>Deux populations distinctes</strong> — Patients avec <code>off</code>
+      mesuré (début de maladie, target ≈ 21) vs patients ON-only (maladie avancée,
+      target ≈ 44). Les flags <code>has_off</code>/<code>has_on_only</code> sont essentiels.
+    </div>
+  </div>
+  <div class="lesson">
+    <div class="lesson-num">3</div>
+    <div class="lesson-body">
+      <strong>GroupKFold nécessaire mais insuffisant</strong> — GroupKFold évite la fuite
+      patient en CV. Mais si le fit final crée une distribution de features différente
+      (cumulatif dense vs sparse), le CV est trompeur. Toujours vérifier que
+      <code>clone(model).fit(X_full)</code> prédit sur les mêmes distributions.
+    </div>
+  </div>
+  <div class="lesson">
+    <div class="lesson-num">4</div>
+    <div class="lesson-body">
+      <strong>Les features whole-patient sont valides au test</strong> — Calculer la
+      pente de progression, la moyenne LOO et la fraction OFF sur toutes les visites
+      d'un patient (sans toucher la cible) donne des features très informatives,
+      identiquement disponibles sur train et test.
+    </div>
+  </div>
+  <div class="lesson">
+    <div class="lesson-num">5</div>
+    <div class="lesson-body">
+      <strong>Ensemble + lissage polynomial</strong> — Moyenner 5 seeds réduit la
+      variance. Le lissage polynomial par patient (degré auto selon le nombre de
+      visites) lisse les prédictions incohérentes inter-visites.
+    </div>
+  </div>
+
+  
+  <h2>Rapports Skore Hub — Bobalicious / ibm-hackathon</h2>
+  <div class="hub-box">
+    <div class="hub-row">
+      <span class="hub-key">01_dummy</span>
+      <span><a href="https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/44282">↗ lien</a></span>
+      <span class="hub-rmse bad">16.50</span>
+    </div>
+    <div class="hub-row">
+      <span class="hub-key">02_ridge</span>
+      <span><a href="https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/44306">↗ lien</a></span>
+      <span class="hub-rmse bad">10.44</span>
+    </div>
+    <div class="hub-row">
+      <span class="hub-key">04_hgbr</span>
+      <span><a href="https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/44330">↗ lien</a></span>
+      <span class="hub-rmse bad">7.44</span>
+    </div>
+    <div class="hub-row">
+      <span class="hub-key">07_final</span>
+      <span><a href="https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/44368">↗ lien</a></span>
+      <span class="hub-rmse bad">7.37</span>
+    </div>
+    <div class="hub-row">
+      <span class="hub-key">16_whole_patient</span>
+      <span><a href="https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/43831">↗ lien</a></span>
+      <span class="hub-rmse">3.47</span>
+    </div>
+    <div class="hub-row" style="background:#f0fdf4;border-radius:4px;padding:6px 4px">
+      <span class="hub-key" style="font-weight:700">17_whole_patient_v2 🏆</span>
+      <span><a href="https://skore.probabl.ai/Bobalicious/ibm-hackathon/cross-validations/44466">↗ lien</a></span>
+      <span class="hub-rmse" style="font-size:14px">3.47 CV / <strong>3.246 Kaggle</strong></span>
+    </div>
+  </div>
+
+  <div class="footer">Made with IBM Bob</div>
+</div>
+</body>
+</html>
