@@ -1,92 +1,93 @@
 # %% [markdown]
-# # Experiment 08 — Strategy 1: Temporal lag features
+# # Experiment 08 — Strategy 1: Lag Features (prev_target)
 #
-# Key insight: prev_target (previous visit's true-OFF) has r=0.991 with target.
-# Disease progression is near-linear per patient — the strongest signal is
-# the patient's own recent history.
+# Per-patient temporal lag: sort each patient's visits by `age`, then use
+# the **previous visit's target** (`prev_target`) and previous `off`/`on`
+# as features. This exploits the longitudinal structure (4–12 visits/patient).
 #
-# Lag features engineered (per patient, sorted by age):
-#   - prev_target, prev_on, prev_off, prev_ledd  (shift(1))
-#   - rolling2_target  (mean of last 2)
-#   - visit_number, disease_duration, on_off_gap
+# ⚠️ Cold-start problem: test patients are unseen → `prev_target` is NaN
+# for every test row. Strategy 1 alone cannot be submitted cleanly; it
+# serves as the high-signal base layer for the stacking ensemble (exp 11).
 #
-# For test: patients are unseen — lags are computed within X_test itself
-# (rows ordered by age per patient), so first visit per test patient has NaN lags
-# (HGBR handles natively).
-#
-# CV RMSE: 2.51  (vs 7.37 previous best)
+# Expected CV RMSE: ~2.51 (GroupKFold n_splits=5, patient holdout)
 
 # %%
 import pandas as pd
 import numpy as np
-from sklearn.base import clone
-from sklearn.model_selection import GroupKFold
-from skrub import tabular_pipeline
+from sklearn.model_selection import GroupKFold, cross_val_score
+from sklearn.ensemble import HistGradientBoostingRegressor
 import skore
-
-
-def build_features(df: pd.DataFrame, is_test: bool = False) -> pd.DataFrame:
-    """Add lag + engineered features. df must be sorted by patient_id, age."""
-    df = df.sort_values(["patient_id", "age"]).copy()
-
-    # Lag features — previous visit per patient
-    for col in ["on", "off", "ledd"]:
-        if col in df.columns:
-            df[f"prev_{col}"] = df.groupby("patient_id")[col].shift(1)
-
-    # Previous target only available in train (target col present)
-    if not is_test and "target" in df.columns:
-        df["prev_target"] = df.groupby("patient_id")["target"].shift(1)
-        df["rolling2_target"] = df.groupby("patient_id")["target"].transform(
-            lambda x: x.shift(1).rolling(2, min_periods=1).mean()
-        )
-    else:
-        # At test time: no target → these will be NaN (HGBR handles)
-        df["prev_target"] = np.nan
-        df["rolling2_target"] = np.nan
-
-    # Engineered scalars
-    df["disease_duration"] = df["age"] - df["age_at_diagnosis"]
-    df["on_off_gap"] = df["off"] - df["on"]
-    df["visit_number"] = df.groupby("patient_id").cumcount() + 1
-
-    return df
-
 
 # --- data ---
 X_train = pd.read_csv("data/X_train.csv", index_col="Index")
 y_train = pd.read_csv("data/y_train.csv", index_col="Index")
-X_test  = pd.read_csv("data/X_test.csv",  index_col="Index")
-
 visits = X_train.join(y_train)
-visits = build_features(visits, is_test=False)
 
-y = visits["target"]
-X_full = visits.drop(columns=["patient_id", "target"])
+# %%
+# --- build lag features within each patient, ordered by age ---
+def add_lag_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add per-patient lagged features sorted by age.
 
-groups = visits["patient_id"]
-cv_splits = list(GroupKFold(n_splits=5).split(X_full, y, groups=groups))
+    For each patient, visits are sorted ascending by age.
+    Lag-1 values of target, off, and on are appended.
+    Returns df with original index preserved.
+    """
+    df = df.copy()
+    df = df.sort_values(["patient_id", "age"])
+    grp = df.groupby("patient_id", sort=False)
 
-# --- model ---
-model = tabular_pipeline("regressor")
+    df["prev_target"] = grp["target"].shift(1)
+    df["prev_off"]    = grp["off"].shift(1)
+    df["prev_on"]     = grp["on"].shift(1)
+    df["disease_duration"] = df["age"] - df["age_at_diagnosis"]
+    return df
 
-# --- evaluate ---
-report = skore.evaluate(model, X_full, y, splitter=cv_splits)
-print("Strategy 1 (lag features) RMSE:")
+visits_lag = add_lag_features(visits)
+
+# %%
+# Feature matrix: drop non-feature columns; HGBR handles NaN natively
+FEATURE_COLS = [
+    "cohort", "sexM", "gene", "age_at_diagnosis", "age",
+    "ledd", "time_since_intake_on", "time_since_intake_off",
+    "on", "off",
+    "disease_duration",
+    "prev_target", "prev_off", "prev_on",   # ← new lag features
+]
+
+X = visits_lag[FEATURE_COLS]
+y = visits_lag["target"]
+groups = visits_lag["patient_id"]
+
+cv = GroupKFold(n_splits=5)
+model = HistGradientBoostingRegressor(random_state=0)
+
+# %%
+# --- CV evaluation ---
+scores = cross_val_score(
+    model, X, y,
+    cv=cv.split(X, y, groups=groups),
+    scoring="neg_root_mean_squared_error",
+)
+rmse_scores = -scores
+print(f"Lag-features RMSE per fold: {rmse_scores.round(3)}")
+print(f"Mean RMSE: {rmse_scores.mean():.3f}  Std: {rmse_scores.std():.3f}")
+
+# %%
+# --- skore report ---
+cv_splits = list(cv.split(X, y, groups=groups))
+report = skore.evaluate(model, X, y, splitter=cv_splits)
+print("skore RMSE:")
 print(report.metrics.rmse())
 
-# --- project ---
 project = skore.Project(name="ibm-hackathon", mode="local", workspace="skore")
 project.put("08_lag_features", report)
 print("Report saved.")
 
-# --- submission ---
-X_test_feat = build_features(X_test, is_test=True)
-X_test_feat = X_test_feat.drop(columns=["patient_id"])
-
-final = clone(model).fit(X_full, y)
-submission = X_test.reset_index()[["Index"]].copy()
-submission["target"] = final.predict(X_test_feat)
-submission.to_csv("submission_lag.csv", index=False)
-print(f"submission_lag.csv written: {len(submission)} rows")
-print(submission.describe())
+# %%
+# NOTE: No submission file produced — prev_target is NaN for all test rows.
+# Use exp 11 (stacking) for a submittable ensemble that handles cold-start.
+print(
+    "\n⚠️  Cold-start note: test patients are unseen, so prev_target=NaN "
+    "for all test rows. This model cannot be used alone for submission. "
+    "It feeds exp 11 (stacking) as the high-signal base learner."
+)

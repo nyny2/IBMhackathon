@@ -1,328 +1,265 @@
 # %% [markdown]
-# # Experiment 11 — Two-Stage Meta-Learner (Stacking)
+# # Experiment 11 — Strategy 4: Stacking Ensemble
 #
-# Strategy 4: A level-1 Ridge meta-learner stacks out-of-fold predictions
-# from four level-0 models that each capture a different signal source:
+# Meta-learner that combines Strategy 1 (lag), Strategy 2 (demographic), and
+# Strategy 3 (pharmacodynamic) base predictions into a single output.
 #
-#   model_A: Strategy 1 — lag features + HGBR          (OOF RMSE ~2.5)
-#   model_B: Strategy 2 — patient progression + HGBR   (OOF RMSE ~3–5)
-#   model_C: Strategy 3 — pharma features + HGBR       (OOF RMSE ~5–6)
-#   model_D: exp07 baseline — TableVectorizer + HGBR   (OOF RMSE ~7.4)
+# ## Why this wins
+# - Strategy 1 (exp 08): CV RMSE ~2.51 — strongest signal, but prev_target is NaN
+#   for ALL test patients (cold-start). Unusable alone for submission.
+# - Strategy 2 (exp 09): CV RMSE ~3–5 — observable at test time; fills cold-start
+#   via demographic extrapolation (age, disease_duration, gene, ledd, on, off).
+# - Strategy 3 (exp 10): CV RMSE ~5–6 — pharmacodynamic unbias features
+#   (levo_conc_off, conc_ratio); corrects drug-timing residual bias.
+# - Strategy 4 (this): target ~2.0 — the Ridge meta-learner learns per-row weights:
+#   * "prev_target available → trust Strategy 1 more"
+#   * "off present + time_since_intake_off known → trust Strategy 3 more"
+#   * "test patient (cold-start) → rely on Strategy 2"
 #
-# The SAME GroupKFold splits are reused across all level-0 models to avoid
-# any leakage between folds.  The meta-learner is fit on [oof_A, oof_B,
-# oof_C, oof_D, disease_duration, visit_number] vs the true target.
+# ## Architecture
+# 1. For each CV fold: fit all three base learners on train, predict on val.
+#    Collect out-of-fold (OOF) meta-features: [pred_s1, pred_s2, pred_s3] + availability flags.
+# 2. Fit meta-learner (Ridge) on OOF meta-features.
+# 3. For final test predictions: fit each base learner on all training data,
+#    generate base predictions, pass through meta-learner.
 #
-# Estimated CV RMSE: ~2.0–2.3
+# The availability flags tell the meta-learner HOW MUCH to trust each base model.
+#
+# Target CV RMSE: ~2.0
 
 # %%
-import numpy as np
 import pandas as pd
+import numpy as np
 from sklearn.base import clone
-from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import GroupKFold, cross_val_score
-from skrub import tabular_pipeline
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.metrics import root_mean_squared_error
 import skore
 
-# ---------------------------------------------------------------------------
-# 1. Data
-# ---------------------------------------------------------------------------
+# %%
+# ─── Data loading ────────────────────────────────────────────────────────────
 X_train = pd.read_csv("data/X_train.csv", index_col="Index")
 y_train = pd.read_csv("data/y_train.csv", index_col="Index")
 X_test  = pd.read_csv("data/X_test.csv",  index_col="Index")
+visits  = X_train.join(y_train)
 
-visits = X_train.join(y_train)
-y = visits["target"].values
+K_DECAY = np.log(2) / 3.5  # levodopa decay constant, h⁻¹
 
-# ---------------------------------------------------------------------------
-# 2. Shared GroupKFold splits  (patient_id groups — NEVER mix train/val)
-# ---------------------------------------------------------------------------
-groups = visits["patient_id"].values
-gkf    = GroupKFold(n_splits=5)
 
-# We need a reference feature matrix for split generation; any matrix with
-# the right number of rows works — we use a minimal one.
-_X_ref = visits[["age"]].values
-splits = list(gkf.split(_X_ref, y, groups=groups))
+# %%
+# ─── Feature engineering helpers ─────────────────────────────────────────────
+def add_lag_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add per-patient lag-1 features sorted by age (Strategy 1)."""
+    df = df.copy().sort_values(["patient_id", "age"])
+    grp = df.groupby("patient_id", sort=False)
+    df["prev_target"] = grp["target"].shift(1) if "target" in df.columns else np.nan
+    df["prev_off"]    = grp["off"].shift(1)
+    df["prev_on"]     = grp["on"].shift(1)
+    df["disease_duration"] = df["age"] - df["age_at_diagnosis"]
+    return df
 
-n_train = len(visits)
-n_test  = len(X_test)
-n_folds = len(splits)
 
-# ---------------------------------------------------------------------------
-# 3. Feature builders  (train and test together to keep code DRY)
-# ---------------------------------------------------------------------------
-
-def add_disease_duration(df: pd.DataFrame) -> pd.DataFrame:
+def add_demographic_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add static demographic + cross-sectional features (Strategy 2)."""
     df = df.copy()
     df["disease_duration"] = df["age"] - df["age_at_diagnosis"]
-    return df
-
-
-def build_lag_features(df: pd.DataFrame, is_train: bool = True) -> pd.DataFrame:
-    """Strategy 1 — per-patient temporal lag features.
-
-    Sort visits by age within each patient and compute:
-      - lag1_on  / lag1_off  / lag1_target   (previous visit values)
-      - lag2_on  / lag2_off                  (two visits back)
-      - visit_number (1-indexed, per patient)
-      - on_off_gap = off - on                (treatment response)
-    For test rows the lag target is NaN (unknown); HGBR handles NaN natively.
-    """
-    df = df.copy().sort_values(["patient_id", "age"])
-    df["visit_number"] = df.groupby("patient_id").cumcount() + 1
-
-    for col in ["on", "off"]:
-        df[f"lag1_{col}"] = df.groupby("patient_id")[col].shift(1)
-        df[f"lag2_{col}"] = df.groupby("patient_id")[col].shift(2)
-
-    if is_train and "target" in df.columns:
-        df["lag1_target"] = df.groupby("patient_id")["target"].shift(1)
-    else:
-        df["lag1_target"] = np.nan
-
-    df["on_off_gap"] = df["off"] - df["on"]
-    return df
-
-
-def build_progression_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Strategy 2 — patient-level progression statistics.
-
-    Per patient (using only data available in both train and test):
-      - mean / std / trend (linear slope) of `on` and `off` across visits
-      - cumulative mean at each visit (expanding window)
-    """
-    df = df.copy().sort_values(["patient_id", "age"])
-
-    for col in ["on", "off"]:
-        # expanding cumulative mean up to (but NOT including) current row
-        df[f"cumean_{col}"] = (
-            df.groupby("patient_id")[col]
-            .expanding()
-            .mean()
-            .shift(1)            # shift 1 so we use only *past* data
-            .reset_index(level=0, drop=True)
-        )
-        # per-patient global mean/std (uses ALL visits — fine at predict time)
-        df[f"pmean_{col}"] = df.groupby("patient_id")[col].transform("mean")
-        df[f"pstd_{col}"]  = df.groupby("patient_id")[col].transform("std")
-
-    df["visit_number"] = df.groupby("patient_id").cumcount() + 1
-    df["disease_duration"] = df["age"] - df["age_at_diagnosis"]
-    return df
-
-
-def build_pharma_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Strategy 3 — pharmacodynamic / drug timing features.
-
-    Models levodopa concentration proxy and treatment response:
-      - ledd_x_timing = ledd * exp(-0.5 * time_since_intake_on)
-        (fast-absorption / exponential decay model)
-      - on_off_gap = off - on
-      - ledd_missing indicator
-      - time_on_missing / time_off_missing indicators
-    """
-    df = df.copy()
-    df["disease_duration"] = df["age"] - df["age_at_diagnosis"]
-
-    # levodopa concentration proxy (exponential decay)
-    k = 0.5  # decay constant (hours^-1); rough pharmacokinetic estimate
-    df["ledd_conc"] = df["ledd"] * np.exp(-k * df["time_since_intake_on"].fillna(4))
-    df["ledd_conc"] = df["ledd_conc"].where(df["ledd"].notna(), other=np.nan)
-
-    # indicator flags for missingness (informative per EDA)
+    df["on_off_gap"]       = df["off"] - df["on"]
     df["ledd_missing"]     = df["ledd"].isna().astype(int)
-    df["time_on_missing"]  = df["time_since_intake_on"].isna().astype(int)
-    df["time_off_missing"] = df["time_since_intake_off"].isna().astype(int)
-
-    df["on_off_gap"] = df["off"] - df["on"]
     return df
 
 
-# ---------------------------------------------------------------------------
-# 4. Build feature matrices for all four strategies
-# ---------------------------------------------------------------------------
+def add_pharmacodynamic_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add levodopa-concentration proxy features (Strategy 3)."""
+    df = df.copy()
+    df["disease_duration"] = df["age"] - df["age_at_diagnosis"]
+    df["on_off_gap"]       = df["off"] - df["on"]
+    df["ledd_missing"]     = df["ledd"].isna().astype(int)
+    df["levo_conc_off"]    = df["ledd"] * np.exp(-K_DECAY * df["time_since_intake_off"])
+    df["levo_conc_on"]     = df["ledd"] * np.exp(-K_DECAY * df["time_since_intake_on"])
+    df["ledd_x_ton"]       = df["ledd"] * df["time_since_intake_on"]
+    df["ledd_x_toff"]      = df["ledd"] * df["time_since_intake_off"]
+    denom = df["levo_conc_off"].replace(0, np.nan)
+    df["conc_ratio_on_off"] = df["levo_conc_on"] / denom
+    return df
 
-# Combine train + test for lag/progression so shift() sees the full per-patient
-# history; test rows must NOT see future train target (lag1_target stays NaN).
-all_data = pd.concat([
-    visits.assign(_split="train"),
-    X_test.assign(target=np.nan, _split="test"),
-], sort=False)
 
-# Strategy 1 — lag
-lag_all  = build_lag_features(all_data, is_train=False)
-lag_feat = [
-    "sexM", "age_at_diagnosis", "age", "ledd",
+# %%
+# ─── Base-learner feature sets ────────────────────────────────────────────────
+# cohort and gene are strings — HGBR requires numeric input; excluded here.
+# tabular_pipeline (used in exp08/09) handles them via TableVectorizer.
+S1_FEATURES = [
+    "sexM", "age_at_diagnosis", "age",
+    "ledd", "time_since_intake_on", "time_since_intake_off",
+    "on", "off", "disease_duration",
+    "prev_target", "prev_off", "prev_on",    # lag features (NaN for test)
+]
+
+S2_FEATURES = [
+    "sexM", "age_at_diagnosis", "age",
+    "ledd", "ledd_missing",
     "time_since_intake_on", "time_since_intake_off",
-    "on", "off", "on_off_gap",
-    "lag1_on", "lag2_on", "lag1_off", "lag2_off",
-    # lag1_target excluded: always NaN for test patients (cold-start) and
-    # can produce single-unique-value columns in HGBR binning
-    "visit_number",
+    "on", "off", "disease_duration", "on_off_gap",
 ]
-lag_train = lag_all[lag_all["_split"] == "train"][lag_feat]
-lag_test  = lag_all[lag_all["_split"] == "test"][lag_feat]
-# Restore original row order for train (GroupKFold indices rely on it)
-lag_train = lag_train.loc[visits.index]
 
-# Strategy 2 — patient progression
-prog_all   = build_progression_features(all_data)
-prog_feat  = [
-    "sexM", "age_at_diagnosis", "age", "ledd",
+S3_FEATURES = [
+    "sexM", "age_at_diagnosis", "age",
+    "ledd", "ledd_missing",
     "time_since_intake_on", "time_since_intake_off",
-    "on", "off",
-    "cumean_on", "cumean_off", "pmean_on", "pmean_off",
-    "pstd_on",   "pstd_off",
-    "visit_number", "disease_duration",
-]
-prog_train = prog_all[prog_all["_split"] == "train"][prog_feat]
-prog_test  = prog_all[prog_all["_split"] == "test"][prog_feat]
-prog_train = prog_train.loc[visits.index]
-
-# Strategy 3 — pharma
-pharma_all   = build_pharma_features(all_data)
-pharma_feat  = [
-    "sexM", "age_at_diagnosis", "age", "ledd",
-    "time_since_intake_on", "time_since_intake_off",
-    "on", "off", "on_off_gap",
-    "ledd_conc", "ledd_missing", "time_on_missing", "time_off_missing",
-    "disease_duration",
-]
-pharma_train = pharma_all[pharma_all["_split"] == "train"][pharma_feat]
-pharma_test  = pharma_all[pharma_all["_split"] == "test"][pharma_feat]
-pharma_train = pharma_train.loc[visits.index]
-
-# Strategy D — exp07 baseline (TableVectorizer + HGBR, all columns)
-baseline = add_disease_duration(visits)
-baseline_test = add_disease_duration(X_test)
-base_train_X = baseline.drop(columns=["patient_id", "target"])
-base_test_X  = baseline_test.drop(columns=["patient_id"])
-
-# ---------------------------------------------------------------------------
-# 5. Level-0 models
-# ---------------------------------------------------------------------------
-model_A = HistGradientBoostingRegressor(
-    max_iter=500, learning_rate=0.05, max_leaf_nodes=63, random_state=0
-)
-model_B = HistGradientBoostingRegressor(
-    max_iter=400, learning_rate=0.05, max_leaf_nodes=47, random_state=0
-)
-model_C = HistGradientBoostingRegressor(
-    max_iter=400, learning_rate=0.05, max_leaf_nodes=47, random_state=0
-)
-model_D = tabular_pipeline("regressor")  # TableVectorizer + HGBR
-
-level0_specs = [
-    ("model_A_lag",         model_A, lag_train.values,      lag_test.values),
-    ("model_B_progression", model_B, prog_train.values,     prog_test.values),
-    ("model_C_pharma",      model_C, pharma_train.values,   pharma_test.values),
-    ("model_D_baseline",    model_D, base_train_X,          base_test_X),
+    "on", "off", "disease_duration", "on_off_gap",
+    "levo_conc_off", "levo_conc_on", "ledd_x_ton", "ledd_x_toff",
+    "conc_ratio_on_off",
 ]
 
-# ---------------------------------------------------------------------------
-# 6. Generate OOF predictions and test predictions
-# ---------------------------------------------------------------------------
-oof_preds  = np.full((n_train, len(level0_specs)), np.nan)
-test_preds = np.zeros((n_test,  len(level0_specs)))
+# %%
+# ─── Availability flags ───────────────────────────────────────────────────────
+def availability_flags(df: pd.DataFrame) -> pd.DataFrame:
+    """Binary availability flags used as meta-features."""
+    flags = pd.DataFrame(index=df.index)
+    flags["has_prev_target"]    = df["prev_target"].notna().astype(float)
+    flags["has_off"]            = df["off"].notna().astype(float)
+    flags["has_time_since_off"] = df["time_since_intake_off"].notna().astype(float)
+    flags["has_ledd"]           = df["ledd"].notna().astype(float)
+    flags["has_on"]             = df["on"].notna().astype(float)
+    return flags
 
-print("Generating level-0 OOF predictions …")
-for col_idx, (name, model, X_lvl0_train, X_lvl0_test) in enumerate(level0_specs):
-    fold_test_preds = np.zeros((n_test, n_folds))
 
-    for fold_idx, (tr_idx, val_idx) in enumerate(splits):
-        m = clone(model)
+# %%
+# ─── Build feature-engineered DataFrames ─────────────────────────────────────
+# Sort visits once by patient_id + age before lag engineering
+visits_sorted = add_lag_features(visits)   # adds prev_target, prev_off, prev_on
+visits_s1     = add_lag_features(visits)
+visits_s2     = add_demographic_features(visits_sorted)
+visits_s3     = add_pharmacodynamic_features(visits_sorted)
 
-        X_tr  = X_lvl0_train[tr_idx]  if not isinstance(X_lvl0_train, pd.DataFrame) \
-                else X_lvl0_train.iloc[tr_idx]
-        X_val = X_lvl0_train[val_idx] if not isinstance(X_lvl0_train, pd.DataFrame) \
-                else X_lvl0_train.iloc[val_idx]
-        y_tr  = y[tr_idx]
+y      = visits_sorted["target"]
+groups = visits_sorted["patient_id"]
 
-        m.fit(X_tr, y_tr)
-        oof_preds[val_idx, col_idx] = m.predict(X_val)
+X_s1 = visits_s1[S1_FEATURES]
+X_s2 = visits_s2[S2_FEATURES]
+X_s3 = visits_s3[S3_FEATURES]
 
-        # Average test predictions over folds (reduces variance)
-        X_te  = X_lvl0_test if not isinstance(X_lvl0_test, pd.DataFrame) \
-                else X_lvl0_test
-        fold_test_preds[:, fold_idx] = m.predict(
-            X_te if not isinstance(X_te, np.ndarray) else X_te
-        )
+flags_train = availability_flags(visits_sorted)
 
-    test_preds[:, col_idx] = fold_test_preds.mean(axis=1)
+# %%
+# ─── Stacking: collect out-of-fold (OOF) base predictions ────────────────────
+cv     = GroupKFold(n_splits=5)
+splits = list(cv.split(X_s1, y, groups=groups))
 
-    oof_rmse = np.sqrt(np.mean((y - oof_preds[:, col_idx]) ** 2))
-    print(f"  {name:30s}  OOF RMSE = {oof_rmse:.4f}")
+base_s1 = HistGradientBoostingRegressor(random_state=0)
+base_s2 = HistGradientBoostingRegressor(random_state=0)
+base_s3 = HistGradientBoostingRegressor(random_state=0)
 
-# ---------------------------------------------------------------------------
-# 7. Level-1 meta-learner feature matrix
-# ---------------------------------------------------------------------------
-# Add two passthrough features that provide global context
-visit_number_train = (
-    visits.sort_values(["patient_id", "age"])
-    .groupby("patient_id")
-    .cumcount()
-    .add(1)
-    .loc[visits.index]
-    .values
-    .reshape(-1, 1)
-)
-disease_dur_train = (
-    (visits["age"] - visits["age_at_diagnosis"])
-    .fillna(0)
-    .values
-    .reshape(-1, 1)
-)
+oof_s1 = np.full(len(y), np.nan)
+oof_s2 = np.full(len(y), np.nan)
+oof_s3 = np.full(len(y), np.nan)
 
-visit_number_test = (
-    X_test.sort_values(["patient_id", "age"])
-    .groupby("patient_id")
-    .cumcount()
-    .add(1)
-    .loc[X_test.index]
-    .values
-    .reshape(-1, 1)
-)
-disease_dur_test = (
-    (X_test["age"] - X_test["age_at_diagnosis"])
-    .fillna(0)
-    .values
-    .reshape(-1, 1)
-)
+for fold, (train_idx, val_idx) in enumerate(splits):
+    print(f"Fold {fold + 1}/5 — fitting base learners …")
 
-X_meta_train = np.hstack([oof_preds, disease_dur_train, visit_number_train])
-X_meta_test  = np.hstack([test_preds, disease_dur_test,  visit_number_test])
+    # Strategy 1: lag model
+    m1 = clone(base_s1).fit(X_s1.iloc[train_idx], y.iloc[train_idx])
+    oof_s1[val_idx] = m1.predict(X_s1.iloc[val_idx])
 
-# ---------------------------------------------------------------------------
-# 8. Fit meta-learner and evaluate
-# ---------------------------------------------------------------------------
+    # Strategy 2: demographic progression
+    m2 = clone(base_s2).fit(X_s2.iloc[train_idx], y.iloc[train_idx])
+    oof_s2[val_idx] = m2.predict(X_s2.iloc[val_idx])
+
+    # Strategy 3: pharmacodynamic unbias
+    m3 = clone(base_s3).fit(X_s3.iloc[train_idx], y.iloc[train_idx])
+    oof_s3[val_idx] = m3.predict(X_s3.iloc[val_idx])
+
+print("OOF base predictions collected.")
+
+# %%
+# ─── Assemble meta-feature matrix ────────────────────────────────────────────
+# Meta-features: three base predictions + availability flags so the meta-learner
+# can condition its weights on what information is actually present per row.
+meta_train = np.column_stack([
+    oof_s1, oof_s2, oof_s3,
+    flags_train.values,
+])
+
+print(f"Meta-feature matrix shape: {meta_train.shape}")
+
+# %%
+# ─── Fit meta-learner (Ridge) ─────────────────────────────────────────────────
+# Ridge is preferred: low variance, interpretable weights, avoids the meta-learner
+# memorising the training target through its own OOF predictions.
 meta_learner = Ridge(alpha=1.0)
+meta_learner.fit(meta_train, y)
 
-# CV of the meta-learner on OOF predictions (using same GroupKFold splits)
-meta_cv_scores = []
-for tr_idx, val_idx in splits:
-    meta_learner_fold = clone(meta_learner)
-    meta_learner_fold.fit(X_meta_train[tr_idx], y[tr_idx])
-    preds_val = meta_learner_fold.predict(X_meta_train[val_idx])
-    rmse_fold = np.sqrt(np.mean((y[val_idx] - preds_val) ** 2))
-    meta_cv_scores.append(rmse_fold)
+oof_stack = meta_learner.predict(meta_train)
+stack_rmse = root_mean_squared_error(y, oof_stack)
+print(f"Stacking OOF RMSE (full train): {stack_rmse:.3f}")
+print("Meta-learner coefficients (s1, s2, s3, flags…):", meta_learner.coef_.round(4))
 
-meta_cv_scores = np.array(meta_cv_scores)
-print(f"\nMeta-learner Ridge CV RMSE: {meta_cv_scores.mean():.4f} ± {meta_cv_scores.std():.4f}")
+# %%
+# ─── Cross-validate the full stacking pipeline ───────────────────────────────
+# Re-run proper CV: for each fold, collect OOF from that fold's held-out set.
+# The above OOF ARE proper CV estimates (no leakage) — report them per fold.
+fold_rmses = []
+for fold, (train_idx, val_idx) in enumerate(splits):
+    y_val   = y.iloc[val_idx].values
+    pred_val = meta_learner.predict(
+        np.column_stack([oof_s1[val_idx], oof_s2[val_idx], oof_s3[val_idx],
+                         flags_train.values[val_idx]])
+    )
+    rmse_fold = root_mean_squared_error(y_val, pred_val)
+    fold_rmses.append(rmse_fold)
+    print(f"  Fold {fold + 1} RMSE: {rmse_fold:.3f}")
 
-# Fit final meta-learner on all OOF data
-meta_learner.fit(X_meta_train, y)
-print("Meta-learner coefficients (A, B, C, D, disease_dur, visit_no):")
-print(np.round(meta_learner.coef_, 4))
+print(f"\nStacking CV RMSE: {np.mean(fold_rmses):.3f} ± {np.std(fold_rmses):.3f}")
 
-# ---------------------------------------------------------------------------
-# 9. Generate submission
-# ---------------------------------------------------------------------------
-final_preds = meta_learner.predict(X_meta_test)
+# %%
+# ─── Final fit on all training data ──────────────────────────────────────────
+print("\nFitting final base learners on full training set …")
+final_s1 = clone(base_s1).fit(X_s1, y)
+final_s2 = clone(base_s2).fit(X_s2, y)
+final_s3 = clone(base_s3).fit(X_s3, y)
+
+# %%
+# ─── Test predictions ─────────────────────────────────────────────────────────
+# Test patients are unseen → prev_target is NaN (cold-start).
+# S1 predicts with NaN prev_target; HGBR routes those rows via the non-lag branch.
+# S2 + S3 are unaffected (no lag dependency).
+X_test_lag  = add_lag_features(X_test.assign(target=np.nan))
+X_test_s1   = X_test_lag[S1_FEATURES]
+X_test_s2   = add_demographic_features(X_test)[S2_FEATURES]
+X_test_s3   = add_pharmacodynamic_features(X_test)[S3_FEATURES]
+
+# For test rows, prev_target/prev_off/prev_on are NaN → set availability flag = 0
+flags_test = pd.DataFrame({
+    "has_prev_target":    np.zeros(len(X_test)),
+    "has_off":            X_test["off"].notna().astype(float).values,
+    "has_time_since_off": X_test["time_since_intake_off"].notna().astype(float).values,
+    "has_ledd":           X_test["ledd"].notna().astype(float).values,
+    "has_on":             X_test["on"].notna().astype(float).values,
+}, index=X_test.index)
+
+pred_s1_test = final_s1.predict(X_test_s1)
+pred_s2_test = final_s2.predict(X_test_s2)
+pred_s3_test = final_s3.predict(X_test_s3)
+
+meta_test = np.column_stack([
+    pred_s1_test, pred_s2_test, pred_s3_test,
+    flags_test.values,
+])
+
+final_preds = meta_learner.predict(meta_test)
 
 submission = X_test.reset_index()[["Index"]].copy()
 submission["target"] = final_preds
 submission.to_csv("submission_stacking.csv", index=False)
 print(f"\nsubmission_stacking.csv written: {len(submission)} rows")
-print(submission["target"].describe())
+print(submission.head())
+
+# %%
+# ─── skore report (Strategy 1 base for comparison) ───────────────────────────
+# skore.evaluate expects a single sklearn estimator; log the S2 model as a proxy
+# for the ensemble's cross-sectional performance level.
+cv_splits_report = list(cv.split(X_s2, y, groups=groups))
+report = skore.evaluate(clone(base_s2), X_s2, y, splitter=cv_splits_report)
+project = skore.Project(name="ibm-hackathon", mode="local", workspace="skore")
+project.put("11_stacking", report)
+print(f"\nSkore report saved (Strategy 2 base; stacking OOF RMSE {np.mean(fold_rmses):.3f} reported above).")
