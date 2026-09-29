@@ -1,0 +1,472 @@
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IBM × Probabl Hackathon — Pitch</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #1f2328;
+    background: #ffffff;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px 24px 48px;
+  }
+
+  /* ── Header ── */
+  .header {
+    border-bottom: 2px solid #1f2328;
+    padding-bottom: 16px;
+    margin-bottom: 28px;
+  }
+  .header .label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #57606a;
+    margin-bottom: 6px;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+  .header .subtitle {
+    margin-top: 6px;
+    color: #57606a;
+    font-size: 13px;
+  }
+
+  /* ── Section headers ── */
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #57606a;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 6px;
+    margin: 32px 0 16px;
+  }
+
+  /* ── Problem box ── */
+  .problem-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .prob-card {
+    background: #f7f8fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 14px 16px;
+  }
+  .prob-card .card-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #57606a;
+    margin-bottom: 4px;
+  }
+  .prob-card .card-value {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* ── Timeline ── */
+  .timeline { position: relative; padding-left: 24px; }
+  .timeline::before {
+    content: "";
+    position: absolute;
+    left: 7px; top: 6px; bottom: 6px;
+    width: 2px;
+    background: #e5e7eb;
+  }
+  .tl-item { position: relative; margin-bottom: 20px; }
+  .tl-item:last-child { margin-bottom: 0; }
+  .tl-dot {
+    position: absolute;
+    left: -20px;
+    top: 4px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid #e5e7eb;
+    background: #ffffff;
+  }
+  .tl-dot.ok  { border-color: #3b82d4; background: #3b82d4; }
+  .tl-dot.bad { border-color: #d97706; background: #d97706; }
+  .tl-dot.win { border-color: #16a34a; background: #16a34a; }
+  .tl-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 3px;
+  }
+  .tl-name { font-weight: 600; font-size: 13.5px; }
+  .tl-rmse {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 3px;
+    background: #f7f8fa;
+    border: 1px solid #e5e7eb;
+    color: #1f2328;
+  }
+  .tl-rmse.kaggle-bad { background: #fef3c7; border-color: #d97706; color: #92400e; }
+  .tl-rmse.kaggle-win { background: #dcfce7; border-color: #16a34a; color: #14532d; }
+  .tl-body { font-size: 13px; color: #1f2328; }
+  .tl-reason {
+    margin-top: 5px;
+    padding: 7px 10px;
+    background: #f7f8fa;
+    border-left: 3px solid #e5e7eb;
+    font-size: 12.5px;
+    color: #57606a;
+  }
+  .tl-reason.fail { border-left-color: #d97706; background: #fffbeb; color: #78350f; }
+  .tl-reason.win  { border-left-color: #16a34a; background: #f0fdf4; color: #14532d; }
+
+  /* ── Winner deep-dive ── */
+  .insight-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .insight-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 12px 14px;
+  }
+  .insight-card .ic-num {
+    font-size: 22px;
+    font-weight: 700;
+    color: #3b82d4;
+    line-height: 1.1;
+  }
+  .insight-card .ic-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #57606a;
+    margin-bottom: 4px;
+  }
+  .insight-card .ic-desc { font-size: 12.5px; color: #1f2328; margin-top: 4px; }
+
+  /* ── Formula box ── */
+  .formula-box {
+    background: #f7f8fa;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 16px 18px;
+    margin-top: 14px;
+    font-size: 13px;
+  }
+  .formula-box .formula-line {
+    font-family: "SFMono-Regular", "Consolas", monospace;
+    font-size: 12.5px;
+    color: #1f2328;
+    margin: 3px 0;
+  }
+  .formula-box .formula-comment {
+    color: #57606a;
+    font-style: italic;
+    font-size: 12px;
+    margin-top: 8px;
+  }
+
+  /* ── Result bar chart (SVG) ── */
+  .chart-wrap { margin-top: 14px; }
+
+  /* ── Lessons ── */
+  .lesson-list { list-style: none; padding: 0; }
+  .lesson-list li {
+    padding: 10px 12px;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 13px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .lesson-list li:last-child { border-bottom: none; }
+  .lesson-num {
+    flex-shrink: 0;
+    font-weight: 700;
+    font-size: 12px;
+    color: #57606a;
+    padding-top: 1px;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 48px;
+    padding-top: 14px;
+    border-top: 1px solid #e5e7eb;
+    text-align: center;
+    font-size: 12px;
+    color: #57606a;
+  }
+</style>
+</head>
+<body>
+
+
+<div class="header">
+  <div class="label">IBM × Probabl Hackathon · 3-Minute Pitch</div>
+  <h1>Predicting Parkinson's True Motor Score</h1>
+  <div class="subtitle">What we tried · What failed · What worked · Why</div>
+</div>
+
+
+<div class="section-title">The Problem</div>
+
+<p style="font-size:13px;margin-bottom:14px">
+  The dataset contains clinical visits for <strong>5,576 Parkinson's patients</strong>.
+  The goal: predict the <strong>debiased true-OFF MDS-UPDRS motor score</strong> — a synthetic
+  target that removes the bias introduced by drug timing, measurement subjectivity, and missing exams.
+  Test patients are <em>completely unseen</em> — different people from training data.
+</p>
+
+<div class="problem-grid">
+  <div class="prob-card">
+    <div class="card-label">Training data</div>
+    <div class="card-value">44,590 visits · 5,576 patients</div>
+  </div>
+  <div class="prob-card">
+    <div class="card-label">Test data</div>
+    <div class="card-value">11,013 visits · 1,395 new patients</div>
+  </div>
+  <div class="prob-card">
+    <div class="card-label">Key constraint</div>
+    <div class="card-value">No patient overlap train ↔ test → GroupKFold CV mandatory</div>
+  </div>
+  <div class="prob-card">
+    <div class="card-label">Strongest raw signal</div>
+    <div class="card-value"><code>off</code> score (r = 0.886) — but 42% missing</div>
+  </div>
+</div>
+
+
+<div class="section-title">The Journey — What We Tried</div>
+
+<div class="timeline">
+
+  <div class="tl-item">
+    <div class="tl-dot ok"></div>
+    <div class="tl-head">
+      <span class="tl-name">Baseline — Ridge + median imputation</span>
+      <span class="tl-rmse">CV 10.44</span>
+    </div>
+    <div class="tl-body">Standard starting point: impute missing values with median, fit Ridge.</div>
+    <div class="tl-reason">Median imputation erases signal — <code>off = NaN</code> means the patient skipped the OFF exam because they were doing well. That's information, not noise.</div>
+  </div>
+
+  <div class="tl-item">
+    <div class="tl-dot ok"></div>
+    <div class="tl-head">
+      <span class="tl-name">NaN-native trees — HistGradientBoosting</span>
+      <span class="tl-rmse">CV 7.44</span>
+    </div>
+    <div class="tl-body">HGBR routes missing values to a separate branch instead of filling them. Single biggest jump: −29% over Ridge.</div>
+    <div class="tl-reason">The model learned that rows where <code>off</code> is missing are systematically different patients (earlier stage, doing better on medication). This is a real clinical signal.</div>
+  </div>
+
+  <div class="tl-item">
+    <div class="tl-dot ok"></div>
+    <div class="tl-head">
+      <span class="tl-name">Feature engineering — disease duration, on/off gap</span>
+      <span class="tl-rmse">CV 7.37</span>
+    </div>
+    <div class="tl-body">Added <code>disease_duration = age − age_at_diagnosis</code> and categorical encoding via skrub's TableVectorizer.</div>
+    <div class="tl-reason">Marginal but consistent improvement. The real ceiling was that we weren't using the longitudinal structure of the data — patients have 4–12 ordered visits.</div>
+  </div>
+
+  <div class="tl-item">
+    <div class="tl-dot bad"></div>
+    <div class="tl-head">
+      <span class="tl-name">Cumulative patient history features</span>
+      <span class="tl-rmse">CV 4.14</span>
+      <span class="tl-rmse kaggle-bad">Kaggle 22.50 ❌</span>
+    </div>
+    <div class="tl-body">
+      Built expanding cumulative max/mean of each patient's prior <code>off</code>, <code>on</code>, <code>ledd</code> scores.
+      CV looked great. Kaggle was a disaster.
+    </div>
+    <div class="tl-reason fail">
+      <strong>The distribution shift trap.</strong> The final model was fit on all 44k training rows — where every patient already has rich cumulative history (visits 2–8 are all populated). But test patients are brand-new: their cumulative features are NaN-sparse for early visits. The model trained on dense features and was asked to predict on sparse ones. GroupKFold CV was accurate (it also saw NaN-sparse early visits) but the <em>final fit</em> on all data was a different, overconfident model.
+    </div>
+  </div>
+
+  <div class="tl-item">
+    <div class="tl-dot ok"></div>
+    <div class="tl-head">
+      <span class="tl-name">Strategy 2 — demographic progression (no history)</span>
+      <span class="tl-rmse">CV 7.34</span>
+      <span class="tl-rmse kaggle-win">Kaggle: best at the time ✅</span>
+    </div>
+    <div class="tl-body">Stepped back: cross-sectional features only — <code>on</code>, <code>off</code>, <code>ledd</code>, demographics, <code>on_off_gap</code>. No lags. No history. No shift.</div>
+    <div class="tl-reason win">Every feature is equally observable for a brand-new test patient at visit 1 or visit 8. The honest model.</div>
+  </div>
+
+  <div class="tl-item">
+    <div class="tl-dot win"></div>
+    <div class="tl-head">
+      <span class="tl-name">Off-corrected formula model</span>
+      <span class="tl-rmse">CV 4.06</span>
+      <span class="tl-rmse kaggle-win">Kaggle 3.968 ✅ Best</span>
+    </div>
+    <div class="tl-body">
+      Incorporated a clinically-grounded correction before any feature computation, then used
+      cumulative history of the <em>corrected</em> scores — safely.
+    </div>
+    <div class="tl-reason win">
+      <strong>Key insight: the target is always ≈ off + 8.</strong> Once the correction is baked in, even visit-1 patients get a meaningful prior estimate. Cumulative history of corrected scores is informative from the start — no cold-start collapse.
+    </div>
+  </div>
+
+</div>
+
+
+<div class="section-title">Why the Winning Model Works</div>
+
+<p style="font-size:13px;margin-bottom:4px">
+  The competition target is a <em>debiased</em> true-OFF score. Measured <code>off</code> systematically understates it because levodopa is never fully washed out. The generative model in the data is approximately:
+</p>
+
+<div class="formula-box">
+  <div class="formula-line">target  =  off  +  levodopa_residual_correction    (always positive)</div>
+  <div class="formula-line">target  ≈  off  +  8.0    at long washout (&gt;12 h)</div>
+  <div class="formula-line">target  ≈  on   +  levo_conc_on    when off exam is missing</div>
+  <div class="formula-comment">Mean off = 17.4, mean target = 21.3 for off-only rows — gap of ~3.9 on average, but the correction grows with levo dose and timing.</div>
+</div>
+
+<div class="insight-grid">
+  <div class="insight-card">
+    <div class="ic-label">Key feature 1</div>
+    <div class="ic-num">off + 8</div>
+    <div class="ic-desc"><code>off_corrected</code> — removes the systematic levodopa bias before any cumulative computation. Informative at visit 1 even without history.</div>
+  </div>
+  <div class="insight-card">
+    <div class="ic-label">Key feature 2</div>
+    <div class="ic-num">on + conc</div>
+    <div class="ic-desc"><code>on_corrected</code> — pharmacodynamic debiased estimate when off is missing. Unifies both exam types into one signal.</div>
+  </div>
+  <div class="insight-card">
+    <div class="ic-label">Key feature 3</div>
+    <div class="ic-num">2 populations</div>
+    <div class="ic-desc">Exam-type flags <code>has_off</code>, <code>has_on_only</code> — OFF patients are early-stage (target ≈ 21), ON-only patients are later-stage (target ≈ 44). Explicit segmentation.</div>
+  </div>
+  <div class="insight-card">
+    <div class="ic-label">Key feature 4</div>
+    <div class="ic-num">safe history</div>
+    <div class="ic-desc">Cumulative max/mean/prev of <em>corrected</em> scores (shift + expanding). Safe at test time because corrected base values are non-NaN from visit 1.</div>
+  </div>
+</div>
+
+
+<div class="section-title">Score Progression</div>
+
+<div class="chart-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">
+  
+  <rect width="720" height="160" fill="#f7f8fa" rx="4"></rect>
+
+  
+  <line x1="60" y1="20" x2="60" y2="130" stroke="#e5e7eb" stroke-width="1"></line>
+  <line x1="60" y1="130" x2="700" y2="130" stroke="#e5e7eb" stroke-width="1"></line>
+
+  
+  
+  
+  <text x="52" y="133" font-size="9" fill="#57606a" text-anchor="end">0</text>
+  
+  <line x1="58" y1="108" x2="700" y2="108" stroke="#e5e7eb" stroke-width="1"></line>
+  <text x="52" y="111" font-size="9" fill="#57606a" text-anchor="end">5</text>
+  
+  <line x1="58" y1="86" x2="700" y2="86" stroke="#e5e7eb" stroke-width="1"></line>
+  <text x="52" y="89" font-size="9" fill="#57606a" text-anchor="end">10</text>
+  
+  <line x1="58" y1="64" x2="700" y2="64" stroke="#e5e7eb" stroke-width="1"></line>
+  <text x="52" y="67" font-size="9" fill="#57606a" text-anchor="end">15</text>
+  
+  <line x1="58" y1="42" x2="700" y2="42" stroke="#e5e7eb" stroke-width="1"></line>
+  <text x="52" y="45" font-size="9" fill="#57606a" text-anchor="end">20</text>
+  
+  <line x1="58" y1="20" x2="700" y2="20" stroke="#e5e7eb" stroke-width="1"></line>
+  <text x="52" y="23" font-size="9" fill="#57606a" text-anchor="end">25</text>
+
+  
+  
+  <rect x="75" y="57" width="70" height="73" fill="#e5e7eb" rx="2"></rect>
+  <text x="110" y="53" font-size="9.5" fill="#57606a" text-anchor="middle" font-weight="600">16.5</text>
+  <text x="110" y="143" font-size="9" fill="#57606a" text-anchor="middle">Dummy</text>
+
+  
+  <rect x="165" y="84" width="70" height="46" fill="#c5cfd6" rx="2"></rect>
+  <text x="200" y="80" font-size="9.5" fill="#57606a" text-anchor="middle" font-weight="600">10.4</text>
+  <text x="200" y="143" font-size="9" fill="#57606a" text-anchor="middle">Ridge</text>
+
+  
+  <rect x="255" y="97" width="70" height="33" fill="#93c5fd" rx="2"></rect>
+  <text x="290" y="93" font-size="9.5" fill="#3b82d4" text-anchor="middle" font-weight="600">7.44</text>
+  <text x="290" y="143" font-size="9" fill="#57606a" text-anchor="middle">HGBR</text>
+
+  
+  <rect x="345" y="20" width="70" height="84" fill="#fde68a" rx="2"></rect>
+  <text x="380" y="16" font-size="9.5" fill="#d97706" text-anchor="middle" font-weight="600">22.5 🏳</text>
+  <text x="380" y="143" font-size="9" fill="#57606a" text-anchor="middle">Cumulative</text>
+  <text x="380" y="152" font-size="8" fill="#d97706" text-anchor="middle">(Kaggle)</text>
+
+  
+  <rect x="435" y="98" width="70" height="32" fill="#93c5fd" rx="2"></rect>
+  <text x="470" y="94" font-size="9.5" fill="#3b82d4" text-anchor="middle" font-weight="600">7.34</text>
+  <text x="470" y="143" font-size="9" fill="#57606a" text-anchor="middle">Strategy 2</text>
+
+  
+  <rect x="525" y="112" width="70" height="18" fill="#4ade80" rx="2"></rect>
+  <text x="560" y="108" font-size="9.5" fill="#16a34a" text-anchor="middle" font-weight="700">3.97 ✓</text>
+  <text x="560" y="143" font-size="9" fill="#57606a" text-anchor="middle">Off-corrected</text>
+  <text x="560" y="152" font-size="8" fill="#16a34a" text-anchor="middle">(Kaggle)</text>
+
+  
+  <text x="12" y="80" font-size="9" fill="#57606a" transform="rotate(-90,12,80)" text-anchor="middle">RMSE</text>
+</svg>
+</div>
+
+
+<div class="section-title">Key Lessons</div>
+
+<ul class="lesson-list">
+  <li>
+    <span class="lesson-num">1</span>
+    <span><strong>Missingness is signal, not noise.</strong> In a clinical dataset, a missing OFF exam typically means the patient felt well enough to skip it. Imputing destroys that. Use NaN-native models.</span>
+  </li>
+  <li>
+    <span class="lesson-num">2</span>
+    <span><strong>GroupKFold is necessary but not sufficient.</strong> CV can look honest while the final fit on all data creates a completely different feature distribution than what's seen at test time. Always verify that feature sparsity matches between train and test.</span>
+  </li>
+  <li>
+    <span class="lesson-num">3</span>
+    <span><strong>Read the data-generating process.</strong> The competition explicitly states the target is a debiased true-OFF score. Once we modelled that explicit correction (<em>target ≈ off + 8</em>), the entire feature engineering strategy clicked into place.</span>
+  </li>
+  <li>
+    <span class="lesson-num">4</span>
+    <span><strong>Cold-start is the fundamental test challenge.</strong> Any feature that requires prior patient history collapses for new patients. Either avoid history entirely, or anchor it in corrections that are informative from the very first visit.</span>
+  </li>
+</ul>
+
+
+<div class="footer">Made with IBM Bob</div>
+
+</body>
+</html>
