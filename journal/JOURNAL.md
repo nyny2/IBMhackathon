@@ -15,7 +15,8 @@
 | — | 07 | `submission_final.csv` | 7.366 | — | + disease_duration |
 | — | 09b | `submission_cumulative.csv` | 4.138 | **22.497** ⚠️ | Cumulative features — train/test shift |
 | — | 09 | `submission_progression.csv` | 7.340 | **Best S2** ✅ | Strategy 2, no shift |
-| — | 11 | `submission_corrected.csv` | **4.059** | **3.968** ✅ | **Current best** — off-corrected formula |
+| — | 11 | `submission_corrected.csv` | **4.059** | **3.968** ✅ | Previous best — off-corrected formula |
+| — | 17 | `submission_17_whole_patient_v2.csv` | — | **3.246** 🏆 | **Current best** — whole-patient polynomial fits + stacked sub-models |
 
 ---
 
@@ -168,6 +169,26 @@
 - **Meta-features:** `[pred_s1, pred_s2, pred_s3, has_prev_target, has_off, has_time_since_off, has_ledd, has_on]`
 - **Design intent:** Meta-learner learns context-dependent weights — trust S1 more when `prev_target` is available (training patients with prior visits); fall back to S2 for cold-start test patients
 - **Status:** Architecture correct; not yet run to convergence with corrected base features
+
+---
+
+### Exp 17 — Whole-patient polynomial model v2 🏆 CURRENT BEST
+- **File:** `experiments/17_whole_patient_v2.py`
+- **Kaggle RMSE: 3.246** ✅ **Best result — submitted by Sarah Badsi (SARAH5)**
+- **Architecture:** Two-stage stacked HGBR with whole-patient polynomial trajectory features
+- **Key engineering decisions:**
+  - Per-patient linear polynomial fit (`pfit`) on `off`, `on`, `ledd` over age — captures each patient's long-run trajectory (slope + intercept + fitted value at each visit)
+  - Patient-level aggregates: `pmean`, `pmax`, `pmin`, `pstd` for each signal
+  - Residual from trajectory: `off_resid = off − off_pfit` — captures deviation from the patient's own trend
+  - Forward/backward neighbours: `prev` and `next` values (fill + shift), exploiting intra-test ordering
+  - Centered rolling windows (w=3,5) for `off` and `on`
+  - Pharmacodynamic estimates: `est_off = off + 6`, `est_on = on / 0.49`, unified `est` and `est_avg`
+  - Quadratic polynomial fits on `est`, `est_avg`, `off` (degree 1 and 2)
+  - Patient-level mean of `est` (`est_pmean`), ratio of off-visit count to total visits (`n_off_ratio`)
+  - **Stage 1:** Three specialised HGBR sub-models (`e_off` on off-visit rows, `e_on` on on-visit rows, `e_vis` on all rows) — OOF predictions added as meta-features, plus per-patient fits of those OOF predictions
+  - **Stage 2:** Final tuned HGBR ensemble — 3 seeds × 2000 trees, lr=0.03, min_samples_leaf=40, l2_reg=1 — trained on all features including stage-1 OOF
+  - Final prediction: degree-2 polynomial smooth of the averaged ensemble (`oof_fit2.fillna(oof)`), clipped to [0, 132]
+- **Why it beats exp11:** The whole-patient trajectory model encodes each patient's longitudinal slope directly as a feature. Test patients have multiple visits in X_test — so `prev`/`next` neighbours and polynomial fits are populated for nearly all test rows. Stage-1 sub-models provide calibrated intermediate targets that the final HGBR can specialise on.
 
 ---
 
