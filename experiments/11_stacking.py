@@ -86,22 +86,24 @@ def add_pharmacodynamic_features(df: pd.DataFrame) -> pd.DataFrame:
 
 # %%
 # ─── Base-learner feature sets ────────────────────────────────────────────────
+# cohort and gene are strings — HGBR requires numeric input; excluded here.
+# tabular_pipeline (used in exp08/09) handles them via TableVectorizer.
 S1_FEATURES = [
-    "cohort", "sexM", "gene", "age_at_diagnosis", "age",
+    "sexM", "age_at_diagnosis", "age",
     "ledd", "time_since_intake_on", "time_since_intake_off",
     "on", "off", "disease_duration",
     "prev_target", "prev_off", "prev_on",    # lag features (NaN for test)
 ]
 
 S2_FEATURES = [
-    "cohort", "sexM", "gene", "age_at_diagnosis", "age",
+    "sexM", "age_at_diagnosis", "age",
     "ledd", "ledd_missing",
     "time_since_intake_on", "time_since_intake_off",
     "on", "off", "disease_duration", "on_off_gap",
 ]
 
 S3_FEATURES = [
-    "cohort", "sexM", "gene", "age_at_diagnosis", "age",
+    "sexM", "age_at_diagnosis", "age",
     "ledd", "ledd_missing",
     "time_since_intake_on", "time_since_intake_off",
     "on", "off", "disease_duration", "on_off_gap",
