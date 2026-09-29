@@ -15,8 +15,8 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import GroupKFold, cross_val_score
-from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.base import clone
+from skrub import tabular_pipeline
 import skore
 
 # --- data ---
@@ -55,7 +55,7 @@ y = visits_eng["target"]
 groups = visits_eng["patient_id"]
 
 cv = GroupKFold(n_splits=5)
-model = HistGradientBoostingRegressor(random_state=0)
+model = tabular_pipeline("regressor")   # TableVectorizer handles cohort/gene strings
 
 # %%
 # --- CV evaluation ---
