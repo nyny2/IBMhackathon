@@ -226,6 +226,8 @@ then fits a Ridge meta-learner on out-of-fold predictions + availability flags.
 ├── docs/
 │   ├── CONTEXT.md       ← clinical background
 │   └── GUIDED.md        ← lab guide (steps 1–14)
+├── CONTRIBUTING.md      ← contribution guidelines
+├── STRATEGIES.md        ← all strategy descriptions and comparisons
 ├── experiments/
 │   ├── 01_dummy.py
 │   ├── 02_ridge.py
