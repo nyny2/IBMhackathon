@@ -119,16 +119,23 @@ appears in both train and validation fold. This mirrors the Kaggle holdout exact
 | 05 | `experiments/05_tabular_pipeline.py` | `TableVectorizer` + `HGBR` | all (incl. gene/cohort) | **7.426** | 0.123 | `submission_tabular.csv` |
 | 06 | `experiments/06_dataops_hgbr.py` | DataOps + `TableVectorizer` + `HGBR` | all (incl. gene/cohort) | **7.556** | 0.127 | — |
 | 07 | `experiments/07_final.py` | `TableVectorizer` + `HGBR` + `disease_duration` | all + engineered feature | **7.366** | 0.126 | `submission_final.csv` |
-| 08 | `experiments/08_lag_features.py` | `tabular_pipeline` + prev_target lag | all + lag features | **2.514** | 0.068 | `submission_lag.csv` |
-| 09 | `experiments/09_cumulative_history.py` | `tabular_pipeline` + cumulative history | all + cummax/cumean features | **4.138** | 0.056 | **`submission_cumulative.csv`** ✅ |
-| 11 | `experiments/11_stacking.py` | Two-Stage Meta-Learner (Ridge over 4×HGBR OOF) | lag + progression + pharma + baseline | **~2.0–2.3** (est.) | — | `submission_stacking.csv` |
+| 08 | `experiments/08_lag_features.py` | `tabular_pipeline` + prev_target lag | all + lag features | **2.514** | 0.068 | `submission_lag.csv` ⚠️ |
+| 09 | `experiments/09_cumulative_history.py` | `tabular_pipeline` + cumulative history | all + cummax/cumean features | **4.138** | 0.056 | `submission_cumulative.csv` ⚠️ Kaggle: **22.497** |
+| 10 | `experiments/10_robust_features.py` | `TableVectorizer` + `HGBR` + robust features | raw cols + missingness indicators + scalars | **7.325** | 0.125 | **`submission_robust.csv`** ✅ |
+| 11 | `experiments/11_stacking.py` | Two-Stage Meta-Learner (Ridge over 4×HGBR OOF) | lag + progression + pharma + baseline | **4.002** | 0.050 | `submission_stacking.csv` ⚠️ |
 
-### Best submission: `submission_cumulative.csv` (exp09, no cold-start leakage)
-RMSE **4.138** on 5-fold patient-grouped CV — a **75% reduction** vs the dummy baseline.
-Note: exp08 (lag features, RMSE 2.51) uses `prev_target` which is always NaN at test time
-for unseen patients — its CV score is optimistic. exp09 uses only features computable from
-X_test itself (cumulative max/mean of prior on/off/ledd per patient).
-Experiment 11 (stacking) estimated OOF RMSE **~2.0–2.3** — pending data CSVs to confirm.
+### Best submission: `submission_robust.csv` (exp10)
+CV RMSE **7.325** — honest, no train/test distribution shift.
+
+### ⚠️ Distribution shift warning (exp08, 09, 11)
+Experiments 08, 09, and 11 all use cumulative history features (cummax_off, cumean_on, etc.)
+that are computed from ALL training visits when fitting the final model. Training rows have
+rich cumulative history (visits 2–8 populated). Test patients are UNSEEN — their cumulative
+features are NaN-sparse (especially first visits). The final model sees a completely different
+feature distribution at test time → optimistic CV, catastrophic Kaggle score.
+- exp09: CV 4.138 → **Kaggle 22.497** (confirmed failure)
+- exp08: `prev_target` is all-NaN for test patients — same problem
+- exp11 stacking: meta-learner coeff 0.77 on model_B (progression) + 71 negative predictions
 
 ---
 
@@ -177,14 +184,25 @@ Experiment 11 (stacking) estimated OOF RMSE **~2.0–2.3** — pending data CSVs
 - Lag features per patient (sorted by age): `prev_on`, `prev_off`, `prev_ledd`, `prev_target`, `rolling2_target`, `on_off_gap`, `visit_number`, `disease_duration`.
 - `prev_target` (shift 1 of true-OFF score) has r=0.991 with target — an extremely strong signal.
 - CV RMSE: **2.514** — massive leap vs exp07.
-- ⚠️ **Leakage caveat:** `prev_target` is always NaN for the first visit of each unseen test patient (cold-start). CV score is optimistic; actual Kaggle score will be worse. Still useful as a level-0 model inside the stacker.
+- ⚠️ **Distribution shift:** `prev_target` is all-NaN for unseen test patients. Do not submit.
 
-### Exp 09 — Strategy 5: Cumulative patient history (no cold-start leakage)
-- New insight: `cummax_off` (expanding max of prior off scores) has r=0.903 vs target and 45% more non-null coverage than raw `off`.
+### Exp 09 — Strategy 5: Cumulative patient history
 - Features: expanding cummax/cumean/cummin of `on`, `off`, `ledd` (all shift(1)), lag-1 of `on`/`off`/`ledd`, missingness indicators, `disease_duration`, `visit_number`, `on_off_gap`.
-- All features are computed from **prior rows only** (shift+expanding) — fully valid at test time.
-- CV RMSE: **4.138** — **75% reduction** vs dummy. This is the current best leak-free result.
-- Submission: `submission_cumulative.csv` ✅
+- CV RMSE: **4.138** — appeared leak-free in CV.
+- ⚠️ **Kaggle score: 22.497** — catastrophic failure due to train/test distribution shift.
+  Root cause: the final model is fit on 44,590 rows where every patient's cumulative features
+  are fully populated (visits 2–8 have history). Test patients are UNSEEN — their cumulative
+  features are NaN for early visits. The model sees a completely different input distribution.
+  GroupKFold CV masked this because val patients had the same cold-start structure as test,
+  but the final fit on ALL data learned richer feature patterns than exist at test time.
+
+### Exp 10 — Robust features (no distribution shift)
+- Only features that are identically distributed at train and test time: raw `off`, `on`, `ledd`,
+  `time_*` (NaN-native HGBR), missingness indicators for all 5 missing-prone columns,
+  `disease_duration`, `on_off_gap`, `visit_number`, plus `gene`, `cohort`, `sexM` via TableVectorizer.
+- No cumulative history — no train/test shift.
+- CV RMSE: **7.325** — honest result, expected to match Kaggle score.
+- Submission: `submission_robust.csv` ✅ **Submit this.**
 
 ### Exp 11 — Two-Stage Meta-Learner / Strategy 4 (stacking)
 - Four level-0 HGBR models, each trained with the **same** `GroupKFold(n_splits=5)` splits:
@@ -222,10 +240,11 @@ Experiment 11 (stacking) estimated OOF RMSE **~2.0–2.3** — pending data CSVs
 │   ├── 04_hgbr.py
 │   ├── 05_tabular_pipeline.py
 │   ├── 06_dataops_hgbr.py
-│   ├── 07_final.py      ← baseline best (disease_duration)
-│   ├── 08_lag_features.py   ← Strategy 1: lag + prev_target (RMSE 2.51, optimistic)
-│   ├── 09_cumulative_history.py  ← Strategy 5: cumulative history (RMSE 4.14, leak-free) ✅
-│   └── 11_stacking.py   ← Strategy 4: two-stage meta-learner (est. RMSE ~2.0–2.3)
+│   ├── 07_final.py      ← baseline (disease_duration, CV 7.37)
+│   ├── 08_lag_features.py   ← Strategy 1: lag + prev_target (CV 2.51, ⚠️ distribution shift)
+│   ├── 09_cumulative_history.py  ← cumulative history (CV 4.14, ⚠️ Kaggle 22.50)
+│   ├── 10_robust_features.py  ← robust/honest features (CV 7.33) ✅ submit this
+│   └── 11_stacking.py   ← Strategy 4: stacking meta-learner (CV 4.00, ⚠️ contains shift)
 ├── journal/
 │   └── JOURNAL.md       ← experiment journal with EDA section
 ├── scripts/

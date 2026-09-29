@@ -158,7 +158,9 @@ lag_feat = [
     "time_since_intake_on", "time_since_intake_off",
     "on", "off", "on_off_gap",
     "lag1_on", "lag2_on", "lag1_off", "lag2_off",
-    "lag1_target", "visit_number",
+    # lag1_target excluded: always NaN for test patients (cold-start) and
+    # can produce single-unique-value columns in HGBR binning
+    "visit_number",
 ]
 lag_train = lag_all[lag_all["_split"] == "train"][lag_feat]
 lag_test  = lag_all[lag_all["_split"] == "test"][lag_feat]
