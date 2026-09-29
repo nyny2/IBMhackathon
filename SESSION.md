@@ -118,10 +118,15 @@ appears in both train and validation fold. This mirrors the Kaggle holdout exact
 | 04 | `experiments/04_hgbr.py` | `HGBR` (native NaN) | numeric 8 | **7.436** | 0.135 | `submission_hgbr.csv` |
 | 05 | `experiments/05_tabular_pipeline.py` | `TableVectorizer` + `HGBR` | all (incl. gene/cohort) | **7.426** | 0.123 | `submission_tabular.csv` |
 | 06 | `experiments/06_dataops_hgbr.py` | DataOps + `TableVectorizer` + `HGBR` | all (incl. gene/cohort) | **7.556** | 0.127 | — |
-| 07 | `experiments/07_final.py` | `TableVectorizer` + `HGBR` + `disease_duration` | all + engineered feature | **7.366** | 0.126 | **`submission_final.csv`** ✅ |
+| 07 | `experiments/07_final.py` | `TableVectorizer` + `HGBR` + `disease_duration` | all + engineered feature | **7.366** | 0.126 | `submission_final.csv` |
+| 08 | `experiments/08_lag_features.py` | `tabular_pipeline` + prev_target lag | all + lag features | **2.514** | 0.068 | `submission_lag.csv` |
+| 09 | `experiments/09_cumulative_history.py` | `tabular_pipeline` + cumulative history | all + cummax/cumean features | **4.138** | 0.056 | **`submission_cumulative.csv`** ✅ |
 
-### Best submission: `submission_final.csv`
-RMSE **7.366** on 5-fold patient-grouped CV — a **55% reduction** vs the dummy baseline.
+### Best submission: `submission_cumulative.csv` (exp09, no cold-start leakage)
+RMSE **4.138** on 5-fold patient-grouped CV — a **75% reduction** vs the dummy baseline.
+Note: exp08 (lag features, RMSE 2.51) uses `prev_target` which is always NaN at test time
+for unseen patients — its CV score is optimistic. exp09 uses only features computable from
+X_test itself (cumulative max/mean of prior on/off/ledd per patient).
 
 ---
 
