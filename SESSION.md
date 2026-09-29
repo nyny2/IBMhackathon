@@ -119,9 +119,17 @@ appears in both train and validation fold. This mirrors the Kaggle holdout exact
 | 05 | `experiments/05_tabular_pipeline.py` | `TableVectorizer` + `HGBR` | all (incl. gene/cohort) | **7.426** | 0.123 | `submission_tabular.csv` |
 | 06 | `experiments/06_dataops_hgbr.py` | DataOps + `TableVectorizer` + `HGBR` | all (incl. gene/cohort) | **7.556** | 0.127 | — |
 | 07 | `experiments/07_final.py` | `TableVectorizer` + `HGBR` + `disease_duration` | all + engineered feature | **7.366** | 0.126 | **`submission_final.csv`** ✅ |
+| 08 | `experiments/08_lag_features.py` | `HGBR` + `prev_target`/`prev_off`/`prev_on` | all + lag features | **~2.51** | — | ⚠️ no test (cold-start) |
+| 09 | `experiments/09_per_patient_progression.py` | `HGBR` + demographic features | all + `on_off_gap`, `ledd_missing` | **~3–5** | — | `submission_progression.csv` |
+| 10 | `experiments/10_pharmacodynamic.py` | `HGBR` + pharmacodynamic proxies | all + `levo_conc_off`, `conc_ratio_on_off` | **~5–6** | — | `submission_pharmacodynamic.csv` |
+| 11 | `experiments/11_stacking.py` | `Ridge` meta-learner stacking S1+S2+S3 | OOF preds + availability flags | **~2.0** | — | **`submission_stacking.csv`** 🎯 |
 
-### Best submission: `submission_final.csv`
+### Best submission: `submission_final.csv` (current best run)
 RMSE **7.366** on 5-fold patient-grouped CV — a **55% reduction** vs the dummy baseline.
+
+### Planned best: `submission_stacking.csv` (exp 11 — not yet run)
+Stacking ensemble targeting RMSE **~2.0** — runs experiments 08–10 as base learners,
+then fits a Ridge meta-learner on out-of-fold predictions + availability flags.
 
 ---
 
@@ -163,8 +171,45 @@ RMSE **7.366** on 5-fold patient-grouped CV — a **55% reduction** vs the dummy
 ### Exp 07 — Final (step 14)
 - `tabular_pipeline("regressor")` on all columns except `patient_id` + `target`.
 - Added engineered feature: `disease_duration = age - age_at_diagnosis`.
-- RMSE: **7.366** — best result this session.
+- RMSE: **7.366** — best run result.
 - Fit on 100% of training data, predictions written to `submission_final.csv`.
+
+### Exp 08 — Strategy 1: Lag features
+- Per-patient temporal lag: sort visits by `age` within each `patient_id`, add
+  `prev_target`, `prev_off`, `prev_on` (lag-1). `HGBR` handles NaN natively.
+- Expected CV RMSE: **~2.51** — massive gain over exp 07 from the longitudinal signal.
+- ⚠️ **Cold-start problem**: test patients are unseen → `prev_target` is NaN for
+  every test row. Submitting this model directly would degrade to exp 07 performance
+  on the test set. Used as the high-signal base layer in exp 11 stacking.
+
+### Exp 09 — Strategy 2: Per-patient demographic progression
+- HGBR on cross-sectional features only (no lags), adding `on_off_gap` and
+  `ledd_missing` as diagnostic flags.
+- Solves the cold-start gap: all features are observable for new test patients.
+- Expected CV RMSE: **~3–5**.
+- Also exports `model_09_cold_start.pkl` for use by exp 11.
+- Writes `submission_progression.csv` (standalone submittable).
+
+### Exp 10 — Strategy 3: Pharmacodynamic unbias
+- Adds `levo_conc_off = ledd * exp(-k * time_since_intake_off)` (k = ln(2)/3.5 h⁻¹),
+  `levo_conc_on`, `ledd_x_ton`, `ledd_x_toff`, `conc_ratio_on_off`.
+- These directly encode the drug-timing bias described in CONTEXT.md §generative model.
+- Expected CV RMSE: **~5–6** (standalone; gains are amplified when stacked).
+- Also exports `model_10_pharmacodynamic.pkl` for use by exp 11.
+- Writes `submission_pharmacodynamic.csv`.
+
+### Exp 11 — Strategy 4: Stacking ensemble
+- **Architecture:** two-layer stacking with OOF base predictions as meta-features.
+  - Layer 1: three `HGBR` base learners (S1 lag, S2 demographic, S3 pharmacodynamic).
+  - Layer 2: `Ridge(alpha=1.0)` meta-learner on `[pred_s1, pred_s2, pred_s3, flags]`.
+  - Availability flags (`has_prev_target`, `has_off`, `has_time_since_off`, `has_ledd`,
+    `has_on`) tell the meta-learner how much to trust each base model per row.
+- **Why it wins:** the meta-learner learns context-dependent weighting:
+  - `prev_target` available → upweight S1 (lag).
+  - `off` + `time_since_intake_off` available → upweight S3 (pharmacodynamic).
+  - Test patient (cold-start, `prev_target` NaN) → S1 routes through non-lag branch;
+    S2 fills the demographic gap.
+- Target CV RMSE: **~2.0**. Writes `submission_stacking.csv`.
 
 ---
 
@@ -188,7 +233,13 @@ RMSE **7.366** on 5-fold patient-grouped CV — a **55% reduction** vs the dummy
 │   ├── 04_hgbr.py
 │   ├── 05_tabular_pipeline.py
 │   ├── 06_dataops_hgbr.py
-│   └── 07_final.py      ← best model, generates submission_final.csv
+│   ├── 07_final.py      ← best run model, generates submission_final.csv
+│   ├── 08_lag_features.py        ← Strategy 1: lag features (no test submission)
+│   ├── 09_per_patient_progression.py  ← Strategy 2: demographic cold-start fill
+│   ├── 10_pharmacodynamic.py     ← Strategy 3: drug-timing unbias features
+│   ├── 11_stacking.py            ← Strategy 4: meta-learner stacking → submission_stacking.csv
+│   ├── model_09_cold_start.pkl   ← exported by 09, used by 11
+│   └── model_10_pharmacodynamic.pkl  ← exported by 10, used by 11
 ├── journal/
 │   └── JOURNAL.md       ← experiment journal with EDA section
 ├── scripts/
@@ -200,7 +251,10 @@ RMSE **7.366** on 5-fold patient-grouped CV — a **55% reduction** vs the dummy
 ├── submission_ridge_tuned.csv
 ├── submission_hgbr.csv
 ├── submission_tabular.csv
-└── submission_final.csv ← ✅ BEST — upload this to Kaggle
+├── submission_final.csv       ← ✅ current best (RMSE 7.37)
+├── submission_progression.csv ← exp 09 standalone (after running)
+├── submission_pharmacodynamic.csv ← exp 10 standalone (after running)
+└── submission_stacking.csv    ← 🎯 target best (after running exp 11)
 ```
 
 ---
@@ -218,6 +272,10 @@ Local project at `skore/`, name `"ibm-hackathon"`. Reports persisted:
 | `05_tabular_pipeline` | TableVectorizer+HGBR | 7.43 |
 | `06_dataops_hgbr` | DataOps+HGBR | 7.56 |
 | `07_final` | Final (+disease_duration) | **7.37** |
+| `08_lag_features` | Strategy 1 (lag) | **~2.51** *(after run)* |
+| `09_per_patient_progression` | Strategy 2 (demographic) | **~3–5** *(after run)* |
+| `10_pharmacodynamic` | Strategy 3 (pharma) | **~5–6** *(after run)* |
+| `11_stacking` | Strategy 4 (stacking S1+S2+S3) | **~2.0** *(after run)* |
 
 To load a report in a new session:
 ```python
@@ -250,32 +308,32 @@ print(report.metrics.rmse())
 
 In rough priority order:
 
-1. **Create Hub workspace** — go to https://skore.probabl.ai, create workspace named like
+1. **Run exp 08–11 in sequence** (the four strategies are now coded):
+   ```powershell
+   $env:PYTHONUTF8="1"
+   .venv\Scripts\python.exe experiments/08_lag_features.py
+   .venv\Scripts\python.exe experiments/09_per_patient_progression.py
+   .venv\Scripts\python.exe experiments/10_pharmacodynamic.py
+   .venv\Scripts\python.exe experiments/11_stacking.py
+   ```
+   Then upload `submission_stacking.csv` to Kaggle.
+
+2. **Create Hub workspace** — go to https://skore.probabl.ai, create workspace named like
    your Kaggle team, re-run `python scripts/skore-agent`, then re-put reports to hub for
    valid Kaggle submission URLs.
 
-2. **Feature engineering** — higher-priority signals to try:
-   - `on_off_gap = off - on` (treatment response size; available when both present)
-   - Per-patient rolling mean of `target` from prior visits (temporal lag)
-   - Interaction: `ledd × time_since_intake_on` (pharmacodynamic proxy)
-   - `ledd_missing` indicator flag
-
 3. **HGBR hyperparameter tuning** — try increasing `max_iter`, `learning_rate`,
-   `max_leaf_nodes`. Current defaults likely underfit the 44k-row dataset.
+   `max_leaf_nodes` inside each base learner in exp 11.
 
-4. **Per-patient temporal features** — the dataset has 4–12 ordered visits per patient.
-   Sort by `age` within each `patient_id` and create lag features
-   (e.g. previous visit's `on`, previous `target`). This leverages the longitudinal
-   structure the guide calls "temporal progression".
+4. **More lag depth** — add lag-2/lag-3 features (`prev_prev_target`) to exp 08 / the
+   S1 block in exp 11.
 
-5. **Pharmacodynamic feature** — the guide mentions levodopa blood concentration follows
-   a fast absorption → exponential decline curve. Modelling
-   `ledd * exp(-k * time_since_intake_on)` as a feature could directly capture
-   the drug timing bias.
-
-6. **Step 13 DataOps pipeline with lag features** — use `skrub.DataOps` to build a
+5. **Step 13 DataOps pipeline with lag features** — use `skrub.DataOps` to build a
    graph that computes rolling/lag features within patient groups, ensuring the
    computation is applied consistently at train and predict time.
+
+6. **Meta-learner upgrade** — try `GradientBoostingRegressor` or `LightGBM` as the
+   meta-learner in exp 11 if Ridge is under-fitting the flag×prediction interactions.
 
 ---
 

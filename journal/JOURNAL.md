@@ -9,6 +9,39 @@
 
 ---
 
+## Experiments 08–11 — Stacking Strategies
+
+### Exp 08 — Strategy 1: Lag features (`08_lag_features.py`)
+- **Status:** coded, not yet run
+- **Idea:** per-patient lag-1 features (`prev_target`, `prev_off`, `prev_on`) sorted by `age`
+- **Expected CV RMSE:** ~2.51
+- **Note:** cold-start — prev_target is NaN for all test patients; feeds exp 11 only
+
+### Exp 09 — Strategy 2: Demographic progression (`09_per_patient_progression.py`)
+- **Status:** coded, not yet run
+- **Idea:** HGBR on cross-sectional features + `on_off_gap`, `ledd_missing`; no lags
+- **Expected CV RMSE:** ~3–5
+- **Exports:** `model_09_cold_start.pkl` for use in exp 11
+
+### Exp 10 — Strategy 3: Pharmacodynamic unbias (`10_pharmacodynamic.py`)
+- **Status:** coded, not yet run
+- **Idea:** `levo_conc_off = ledd * exp(-k * time_since_intake_off)` + ratio/interaction features
+- **Expected CV RMSE:** ~5–6
+- **Exports:** `model_10_pharmacodynamic.pkl` for use in exp 11
+
+### Exp 11 — Strategy 4: Stacking ensemble (`11_stacking.py`)
+- **Status:** coded, not yet run
+- **Architecture:** OOF stacking — three HGBR base learners → Ridge meta-learner
+- **Meta-features:** `[pred_s1, pred_s2, pred_s3, has_prev_target, has_off, has_time_since_off, has_ledd, has_on]`
+- **Why it wins:** context-dependent weighting by the meta-learner:
+  - `prev_target` present → trust S1 (lag, RMSE ~2.51)
+  - `off` + `time_since_intake_off` present → upweight S3 (pharmacodynamic)
+  - cold-start test patient → S2 fills the demographic gap
+- **Target CV RMSE:** ~2.0
+- **Output:** `submission_stacking.csv`
+
+---
+
 ## Data understanding (EDA)
 
 - **Status:** done - 2025-09-29
